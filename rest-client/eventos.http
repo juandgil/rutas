@@ -1,0 +1,41 @@
+@baseUrl = http://localhost:3000
+
+### Primero ejecutar auth.http para obtener un token
+### Luego reemplazar el valor de authToken con el token obtenido
+@authToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+### Registrar nuevo evento
+# @name crearEvento
+POST {{baseUrl}}/api/eventos
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "tipo": "TRAFICO",
+  "descripcion": "Cierre vial por manifestación",
+  "latitud": 4.6782,
+  "longitud": -74.0582,
+  "ciudadId": "bogota",
+  "equipoId": "eq-001",
+  "impacto": "ALTO"
+}
+
+### Obtener eventos activos
+GET {{baseUrl}}/api/eventos/activos
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+### Obtener eventos por ciudad
+GET {{baseUrl}}/api/eventos/ciudad/bogota
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+### Obtener eventos por equipo
+GET {{baseUrl}}/api/eventos/equipo/eq-001
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+### Marcar evento como inactivo
+PUT {{baseUrl}}/api/eventos/ev-001/inactivar
+Authorization: Bearer {{authToken}}
+Content-Type: application/json 

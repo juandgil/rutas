@@ -15,6 +15,56 @@ import { Envio, EstadoEnvio } from '../../domain/entities/envio.entity';
 import { Sla } from '../../domain/entities/sla.entity';
 import { Vehiculo } from '../../domain/entities/vehiculo.entity';
 import { v4 as uuidv4 } from 'uuid';
+// Importar interfaces de APIs externas
+import { 
+  IGpsApi, 
+  ITraficoClimaApi, 
+  IVehiculoApi,
+  NivelTrafico,
+  NivelImpacto,
+  ImpactoRuta,
+  Coordenadas
+} from '../../domain/interfaces/external-apis.interface';
+import { Equipo } from '../../domain/entities/equipo.entity';
+import { Evento, TipoEvento } from '../../domain/entities/evento.entity';
+import { OptimizarRutaRequestDto } from '../dtos/ruta.dto';
+
+// Definición interna temporal para TramoDto
+interface TramoDto {
+  id: string;
+  origen: string;
+  destino: string;
+  distancia: number;
+  tiempoEstimado: number;
+  ordenEntrega: number;
+  ciudadId: string;
+  latitudOrigen: number;
+  longitudOrigen: number;
+  latitudDestino: number;
+  longitudDestino: number;
+}
+
+// Definición interna temporal para OptimizarRutaResponseDto
+interface OptimizarRutaResponseDto {
+  rutaId: string;
+  equipoId: string;
+  fechaCreacion: Date;
+  tramos: TramoDto[];
+  tiempoEstimadoTotal: number;
+  distanciaTotal: number;
+  envios: string[];
+}
+
+// Definición interna temporal de RutaPropuesta para uso en el servicio
+interface RutaPropuesta {
+  id?: string;
+  equipoId: string;
+  envios: Envio[];
+  tramos: any[];
+  tiempoEstimado: number;
+  distanciaTotal: number;
+  requiereModificacion?: boolean;
+}
 
 @injectable()
 export class OptimizacionService implements IOptimizacionService {
@@ -30,7 +80,11 @@ export class OptimizacionService implements IOptimizacionService {
     @inject(TYPES.ISlaRepository) private slaRepository: ISlaRepository,
     @inject(TYPES.IEventoRepository) private eventoRepository: IEventoRepository,
     @inject(TYPES.IPubSubService) private pubSubService: IPubSubService,
-    @inject(TYPES.ICacheService) private cacheService: ICacheService
+    @inject(TYPES.ICacheService) private cacheService: ICacheService,
+    // Inyectar las APIs externas
+    @inject(TYPES.IGpsApi) private gpsApi: IGpsApi,
+    @inject(TYPES.ITraficoClimaApi) private traficoClimaApi: ITraficoClimaApi,
+    @inject(TYPES.IVehiculoApi) private vehiculoApi: IVehiculoApi
   ) {}
 
   async optimizarRuta(equipoId: string, fecha: Date): Promise<Ruta> {
@@ -53,13 +107,22 @@ export class OptimizacionService implements IOptimizacionService {
       throw new Error('Vehículo no encontrado');
     }
 
+    // Verificar disponibilidad del vehículo usando la API externa
+    const disponibilidadVehiculo = await this.vehiculoApi.verificarDisponibilidad(vehiculo.id);
+    if (!disponibilidadVehiculo.disponible) {
+      throw new Error(`El vehículo no está disponible: ${disponibilidadVehiculo.razon}`);
+    }
+
+    // Obtener capacidad actualizada del vehículo desde la API externa
+    const capacidadVehiculo = await this.vehiculoApi.obtenerCapacidad(vehiculo.id);
+
     // Obtener los envíos pendientes para la ciudad del equipo
     const enviosPendientes = await this.envioRepository.findByCiudad(equipo.ciudadId);
     const enviosFiltrados = enviosPendientes.filter(e => 
       e.estado === EstadoEnvio.PENDIENTE && 
       !e.equipoId && 
-      e.peso <= vehiculo.capacidadPeso && 
-      e.volumen <= vehiculo.capacidadVolumen
+      e.peso <= capacidadVehiculo.pesoMaximo && 
+      e.volumen <= capacidadVehiculo.volumenMaximo
     );
 
     if (enviosFiltrados.length === 0) {
@@ -71,17 +134,52 @@ export class OptimizacionService implements IOptimizacionService {
     const slasMap = new Map<string, Sla>();
     slas.forEach(sla => slasMap.set(sla.id, sla));
 
-    // Ordenar envíos por prioridad de SLA (menor número es mayor prioridad)
-    const enviosConPrioridad = enviosFiltrados.map(envio => ({
-      envio,
-      prioridad: slasMap.get(envio.slaId)?.prioridad || 5
+    // Obtener condiciones de tráfico y clima para la ciudad
+    const condicionesTrafico = await this.traficoClimaApi.obtenerCondicionesTrafico(equipo.ciudadId);
+    const condicionesClima = await this.traficoClimaApi.obtenerCondicionesClima(equipo.ciudadId);
+
+    // Ordenar envíos por prioridad de SLA, considerando también las condiciones de tráfico y clima
+    const enviosConPrioridad = await Promise.all(enviosFiltrados.map(async envio => {
+      // Obtener el impacto de la ruta para este envío
+      const impactoRuta = await this.traficoClimaApi.obtenerImpactoRuta(
+        { latitud: equipo.latitud, longitud: equipo.longitud },
+        { latitud: envio.latitudDestino, longitud: envio.longitudDestino }
+      );
+
+      // Calcular puntaje final considerando SLA, impacto de tráfico y clima
+      const prioridadSla = slasMap.get(envio.slaId)?.prioridad || 5;
+      
+      // Ajustar por tráfico y clima
+      let factorAjuste = 1.0;
+      
+      // Ajuste por tráfico
+      if (condicionesTrafico.nivel === NivelTrafico.ALTO) {
+        factorAjuste *= 1.5;
+      } else if (condicionesTrafico.nivel === NivelTrafico.MEDIO) {
+        factorAjuste *= 1.2;
+      }
+      
+      // Ajuste por impacto de ruta
+      if (impactoRuta.nivelImpacto === NivelImpacto.ALTO) {
+        factorAjuste *= 2.0;
+      } else if (impactoRuta.nivelImpacto === NivelImpacto.MEDIO) {
+        factorAjuste *= 1.3;
+      }
+      
+      // Menor número = mayor prioridad
+      const puntajeFinal = prioridadSla * factorAjuste;
+      
+      return {
+        envio,
+        prioridad: puntajeFinal
+      };
     }));
 
     enviosConPrioridad.sort((a, b) => a.prioridad - b.prioridad);
 
-    // Calcular la capacidad total del vehículo
-    const capacidadPesoTotal = vehiculo.capacidadPeso;
-    const capacidadVolumenTotal = vehiculo.capacidadVolumen;
+    // Calcular la capacidad total del vehículo usando los datos de la API externa
+    const capacidadPesoTotal = capacidadVehiculo.pesoMaximo;
+    const capacidadVolumenTotal = capacidadVehiculo.volumenMaximo;
 
     // Seleccionar envíos hasta llenar el vehículo
     const enviosSeleccionados: Envio[] = [];
@@ -101,10 +199,47 @@ export class OptimizacionService implements IOptimizacionService {
       throw new Error('No hay envíos que puedan caber en el vehículo');
     }
 
-    // Calcular distancia total y tiempo estimado (simplificado para esta demo)
-    // En un sistema real, esto usaría un algoritmo de ruteo más sofisticado
-    const distanciaTotal = enviosSeleccionados.length * 5; // 5 km por envío en promedio
-    const tiempoEstimado = enviosSeleccionados.length * 20; // 20 minutos por envío en promedio
+    // Calcular distancia total y tiempo estimado considerando tráfico y clima
+    let distanciaTotal = 0;
+    let tiempoEstimado = 0;
+
+    // Punto inicial (ubicación del equipo)
+    let puntoActual = { latitud: equipo.latitud, longitud: equipo.longitud };
+
+    // Calcular ruta para cada envío
+    for (const envio of enviosSeleccionados) {
+      const destino = { latitud: envio.latitudDestino, longitud: envio.longitudDestino };
+      
+      // Obtener impacto de la ruta
+      const impacto = await this.traficoClimaApi.obtenerImpactoRuta(puntoActual, destino);
+      
+      // Calcular distancia euclídea (simplificado)
+      const distanciaSegmento = Math.sqrt(
+        Math.pow(puntoActual.latitud - destino.latitud, 2) +
+        Math.pow(puntoActual.longitud - destino.longitud, 2)
+      ) * 111.32; // Aproximación km (1 grado ≈ 111.32 km)
+      
+      // Ajustar por impacto
+      let factorTiempo = 1.0;
+      if (impacto.nivelImpacto === NivelImpacto.ALTO) {
+        factorTiempo = 2.0;
+      } else if (impacto.nivelImpacto === NivelImpacto.MEDIO) {
+        factorTiempo = 1.5;
+      }
+      
+      // Tiempo estimado: 2 minutos por km en condiciones normales, ajustado por impacto
+      const tiempoSegmento = distanciaSegmento * 2 * factorTiempo;
+      
+      distanciaTotal += distanciaSegmento;
+      tiempoEstimado += tiempoSegmento;
+      
+      // Actualizar punto actual para el siguiente cálculo
+      puntoActual = destino;
+    }
+
+    // Redondear valores
+    distanciaTotal = Math.round(distanciaTotal * 10) / 10; // 1 decimal
+    tiempoEstimado = Math.round(tiempoEstimado); // minutos enteros
 
     // Crear la ruta optimizada
     const nuevaRuta: Ruta = new Ruta({
@@ -131,7 +266,7 @@ export class OptimizacionService implements IOptimizacionService {
         equipoId,
         estado: EstadoEnvio.ASIGNADO,
         ordenEntrega: i + 1,
-        fechaEntregaEstimada: new Date(fecha.getTime() + (i + 1) * 20 * 60 * 1000) // Fecha actual + tiempo estimado
+        fechaEntregaEstimada: new Date(fecha.getTime() + tiempoEstimado * 60 * 1000) // Fecha actual + tiempo estimado
       });
     }
 
@@ -187,34 +322,65 @@ export class OptimizacionService implements IOptimizacionService {
       throw new Error('No hay envíos pendientes para replanificar');
     }
 
-    // Obtener la última ubicación GPS del equipo
-    const ultimaUbicacion = await this.gpsRepository.findUltimaUbicacion(equipoId);
-    if (!ultimaUbicacion) {
+    // Obtener el equipo para acceder a su ciudad
+    const equipo = await this.equipoRepository.findById(equipoId);
+    if (!equipo) {
+      throw new Error('Equipo no encontrado');
+    }
+
+    // Obtener la última ubicación GPS del equipo usando la API externa
+    const ubicacionGps = await this.gpsApi.obtenerUbicacion(equipoId);
+    if (!ubicacionGps) {
       throw new Error('No se encontró la ubicación actual del equipo');
     }
+
+    // Obtener condiciones actualizadas de tráfico y clima
+    const condicionesTrafico = await this.traficoClimaApi.obtenerCondicionesTrafico(equipo.ciudadId);
+    const condicionesClima = await this.traficoClimaApi.obtenerCondicionesClima(equipo.ciudadId);
 
     // Obtenemos los SLAs para priorizar
     const slas = await this.slaRepository.findAll();
     const slasMap = new Map<string, Sla>();
     slas.forEach(sla => slasMap.set(sla.id, sla));
 
-    // Reordenar los envíos considerando la ubicación actual, el impacto del evento y la prioridad SLA
-    const enviosConPrioridad = enviosValidos.map(envio => {
-      // Calcular distancia desde la ubicación actual (fórmula simplificada)
-      const distancia = Math.sqrt(
-        Math.pow(ultimaUbicacion.latitud - envio.latitudDestino, 2) +
-        Math.pow(ultimaUbicacion.longitud - envio.longitudDestino, 2)
+    // Reordenar los envíos considerando la ubicación actual, condiciones de tráfico/clima y SLA
+    const enviosConPrioridad = await Promise.all(enviosValidos.map(async envio => {
+      // Obtener impacto de la ruta desde la ubicación actual
+      const impactoRuta = await this.traficoClimaApi.obtenerImpactoRuta(
+        { latitud: ubicacionGps.latitud, longitud: ubicacionGps.longitud },
+        { latitud: envio.latitudDestino, longitud: envio.longitudDestino }
       );
       
-      // Obtener prioridad del SLA
-      const prioridad = slasMap.get(envio.slaId)?.prioridad || 5;
+      // Calcular distancia desde la ubicación actual
+      const distancia = Math.sqrt(
+        Math.pow(ubicacionGps.latitud - envio.latitudDestino, 2) +
+        Math.pow(ubicacionGps.longitud - envio.longitudDestino, 2)
+      ) * 111.32; // Aproximación km
       
-      // Calcular puntaje considerando distancia y prioridad SLA
+      // Obtener prioridad del SLA
+      const prioridadSla = slasMap.get(envio.slaId)?.prioridad || 5;
+      
+      // Ajustar por tráfico y clima
+      let factorAjuste = 1.0;
+      
+      // Ajuste por el impacto de la ruta
+      if (impactoRuta.nivelImpacto === NivelImpacto.ALTO) {
+        factorAjuste *= 2.0;
+      } else if (impactoRuta.nivelImpacto === NivelImpacto.MEDIO) {
+        factorAjuste *= 1.5;
+      }
+      
+      // Ajuste por el evento que causó la replanificación
+      if (evento.tipo === 'TRAFICO' || evento.tipo === 'CLIMA') {
+        factorAjuste *= 1.3;
+      }
+      
+      // Calcular puntaje considerando todos los factores
       // Menor puntaje = mayor prioridad
-      const puntaje = distancia * prioridad;
+      const puntaje = (distancia * factorAjuste) * prioridadSla;
       
       return { envio, puntaje };
-    });
+    }));
 
     // Ordenar por puntaje (menor primero)
     enviosConPrioridad.sort((a, b) => a.puntaje - b.puntaje);
@@ -227,9 +393,47 @@ export class OptimizacionService implements IOptimizacionService {
       await this.envioRepository.actualizarOrdenEntrega(nuevosEnviosOrdenados[i].id, i + 1);
     }
 
-    // Calcular nueva distancia total y tiempo estimado
-    const nuevaDistanciaTotal = nuevosEnviosOrdenados.length * 5; // Simplificado
-    const nuevoTiempoEstimado = nuevosEnviosOrdenados.length * 20; // Simplificado
+    // Calcular nueva distancia total y tiempo estimado considerando el tráfico y clima
+    let nuevaDistanciaTotal = 0;
+    let nuevoTiempoEstimado = 0;
+
+    // Punto inicial (ubicación actual del equipo)
+    let puntoActual = { latitud: ubicacionGps.latitud, longitud: ubicacionGps.longitud };
+
+    // Calcular ruta para cada envío
+    for (const envio of nuevosEnviosOrdenados) {
+      const destino = { latitud: envio.latitudDestino, longitud: envio.longitudDestino };
+      
+      // Obtener impacto de la ruta
+      const impacto = await this.traficoClimaApi.obtenerImpactoRuta(puntoActual, destino);
+      
+      // Calcular distancia euclídea (simplificado)
+      const distanciaSegmento = Math.sqrt(
+        Math.pow(puntoActual.latitud - destino.latitud, 2) +
+        Math.pow(puntoActual.longitud - destino.longitud, 2)
+      ) * 111.32; // Aproximación km
+      
+      // Ajustar por impacto
+      let factorTiempo = 1.0;
+      if (impacto.nivelImpacto === NivelImpacto.ALTO) {
+        factorTiempo = 2.0;
+      } else if (impacto.nivelImpacto === NivelImpacto.MEDIO) {
+        factorTiempo = 1.5;
+      }
+      
+      // Tiempo estimado: 2 minutos por km en condiciones normales, ajustado por impacto
+      const tiempoSegmento = distanciaSegmento * 2 * factorTiempo;
+      
+      nuevaDistanciaTotal += distanciaSegmento;
+      nuevoTiempoEstimado += tiempoSegmento;
+      
+      // Actualizar punto actual para el siguiente cálculo
+      puntoActual = destino;
+    }
+
+    // Redondear valores
+    nuevaDistanciaTotal = Math.round(nuevaDistanciaTotal * 10) / 10; // 1 decimal
+    nuevoTiempoEstimado = Math.round(nuevoTiempoEstimado); // minutos enteros
 
     // Actualizar la ruta
     const rutaActualizada = await this.rutaRepository.update(rutaActual.id, {
@@ -239,6 +443,15 @@ export class OptimizacionService implements IOptimizacionService {
       replanificada: true,
       ultimoEventoId: eventoId,
       updatedAt: new Date()
+    });
+
+    // Registrar la ubicación actual del equipo
+    await this.gpsApi.registrarUbicacion({
+      equipoId,
+      latitud: ubicacionGps.latitud,
+      longitud: ubicacionGps.longitud,
+      velocidad: ubicacionGps.velocidad,
+      timestamp: new Date()
     });
 
     // Notificar a través de PubSub
@@ -252,5 +465,84 @@ export class OptimizacionService implements IOptimizacionService {
     fecha.setHours(0, 0, 0, 0); // Inicio del día actual
     
     return !(await this.rutaRepository.existeReplanificacionPrevia(equipoId, eventoId, fecha));
+  }
+
+  private calcularImpactoTotal(impactos: ImpactoRuta[]): number {
+    // Valores de peso para cada nivel de impacto
+    const pesos = {
+      BAJO: 1,
+      MEDIO: 2,
+      ALTO: 3,
+      CRITICO: 4
+    };
+
+    // Calcular suma ponderada de los impactos
+    let impactoTotal = 0;
+    for (const impacto of impactos) {
+      impactoTotal += pesos[impacto.nivelImpacto];
+    }
+
+    return impactoTotal;
+  }
+
+  private async evaluarRutasAfectadas(
+    rutasPropuestas: RutaPropuesta[],
+    eventos: Evento[]
+  ): Promise<RutaPropuesta[]> {
+    // Si no hay eventos activos, devolver las rutas sin cambios
+    if (eventos.length === 0) {
+      return rutasPropuestas;
+    }
+
+    // Evaluar cada ruta para determinar si debe modificarse
+    const rutasEvaluadas: RutaPropuesta[] = [];
+
+    for (const ruta of rutasPropuestas) {
+      let debeModificarse = false;
+
+      // Verificar todos los tramos de la ruta
+      for (const tramo of ruta.tramos) {
+        // Verificar si hay eventos que afecten este tramo
+        for (const evento of eventos) {
+          // Si el evento afecta a esta ciudad y es de alto impacto
+          if (evento.ciudadId === tramo.ciudadId) {
+            // Obtener impacto específico para este tramo
+            const impactoRuta = await this.traficoClimaApi.obtenerImpactoRuta(
+              { latitud: tramo.latitudOrigen, longitud: tramo.longitudOrigen },
+              { latitud: tramo.latitudDestino, longitud: tramo.longitudDestino }
+            );
+
+            // Si el impacto es ALTO o CRITICO, modificar la ruta
+            if (impactoRuta.nivelImpacto === 'ALTO' || impactoRuta.nivelImpacto === 'CRITICO') {
+              debeModificarse = true;
+              break;
+            }
+          }
+        }
+        if (debeModificarse) break;
+      }
+
+      // Añadir la ruta a la lista de evaluadas
+      if (debeModificarse) {
+        // Marcar para modificación posterior
+        ruta.requiereModificacion = true;
+      }
+      rutasEvaluadas.push(ruta);
+    }
+
+    return rutasEvaluadas;
+  }
+
+  private async registrarUbicacionEquipo(
+    equipo: Equipo,
+    coordenadas: Coordenadas
+  ): Promise<void> {
+    await this.gpsApi.registrarUbicacion({
+      equipoId: equipo.id,
+      latitud: coordenadas.latitud,
+      longitud: coordenadas.longitud,
+      timestamp: new Date(),
+      velocidad: 40 // Velocidad simulada en km/h
+    });
   }
 } 

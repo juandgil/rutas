@@ -1,80 +1,79 @@
-import { createClient, RedisClientType } from 'redis';
 import { injectable } from 'inversify';
-import config from '../config/config';
+import * as redis from 'redis';
 
+// Interfaz común para servicios de caché
 export interface ICacheService {
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string, ttl?: number): Promise<void>;
+  get<T>(key: string): Promise<T | null>;
+  set(key: string, value: any, ttlSeconds?: number): Promise<void>;
   del(key: string): Promise<void>;
+  exists(key: string): Promise<boolean>;
 }
 
 @injectable()
 export class RedisCache implements ICacheService {
-  private client: RedisClientType;
-  private isConnected = false;
+  private client: redis.RedisClientType | null = null;
+  private memoryCache: Map<string, { value: any, expiry?: number }> = new Map();
+  private useMemoryCache: boolean = true; // Siempre usar caché en memoria para desarrollo
 
   constructor() {
-    this.client = createClient({
-      url: `redis://${config.REDIS_HOST}:${config.REDIS_PORT}`,
-      password: config.REDIS_PASSWORD || undefined
-    });
-
-    this.client.on('error', (err) => {
-      console.error('Error en la conexión a Redis:', err);
-      this.isConnected = false;
-    });
-
-    this.client.on('connect', () => {
-      console.log('Conectado a Redis');
-      this.isConnected = true;
-    });
-
-    // Conectar al cliente de Redis al inicializar
-    this.connect();
+    console.log('Usando caché en memoria para desarrollo...');
   }
 
-  private async connect(): Promise<void> {
-    try {
-      if (!this.isConnected) {
-        await this.client.connect();
-      }
-    } catch (error) {
-      console.error('Error al conectar a Redis:', error);
-      throw error;
-    }
+  async get<T>(key: string): Promise<T | null> {
+    return this.getFromMemory<T>(key);
   }
 
-  async get(key: string): Promise<string | null> {
-    try {
-      await this.ensureConnection();
-      return await this.client.get(key);
-    } catch (error) {
-      console.error(`Error al obtener el valor para la clave ${key}:`, error);
-      return null;
-    }
-  }
-
-  async set(key: string, value: string, ttl = 3600): Promise<void> {
-    try {
-      await this.ensureConnection();
-      await this.client.set(key, value, { EX: ttl });
-    } catch (error) {
-      console.error(`Error al establecer el valor para la clave ${key}:`, error);
-    }
+  async set(key: string, value: any, ttlSeconds?: number): Promise<void> {
+    this.setInMemory(key, value, ttlSeconds);
   }
 
   async del(key: string): Promise<void> {
-    try {
-      await this.ensureConnection();
-      await this.client.del(key);
-    } catch (error) {
-      console.error(`Error al eliminar la clave ${key}:`, error);
-    }
+    this.memoryCache.delete(key);
   }
 
-  private async ensureConnection(): Promise<void> {
-    if (!this.isConnected) {
-      await this.connect();
+  async exists(key: string): Promise<boolean> {
+    return this.existsInMemory(key);
+  }
+
+  // Implementación de caché en memoria
+  private getFromMemory<T>(key: string): T | null {
+    const item = this.memoryCache.get(key);
+    
+    if (!item) {
+      return null;
     }
+    
+    // Verificar si ha expirado
+    if (item.expiry && item.expiry < Date.now()) {
+      this.memoryCache.delete(key);
+      return null;
+    }
+    
+    return item.value as T;
+  }
+
+  private setInMemory(key: string, value: any, ttlSeconds?: number): void {
+    const item = {
+      value,
+      expiry: ttlSeconds ? Date.now() + (ttlSeconds * 1000) : undefined
+    };
+    
+    this.memoryCache.set(key, item);
+  }
+
+  private existsInMemory(key: string): boolean {
+    const item = this.memoryCache.get(key);
+    
+    if (!item) {
+      return false;
+    }
+    
+    // Verificar si ha expirado
+    if (item.expiry && item.expiry < Date.now()) {
+      this.memoryCache.delete(key);
+      return false;
+    }
+    
+    return true;
   }
 } 

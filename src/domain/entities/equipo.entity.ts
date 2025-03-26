@@ -8,6 +8,8 @@ export class Equipo {
   vehiculoId: string;
   disponible: boolean;
   ciudadId: string;
+  latitud: number; // Ubicación geográfica - latitud
+  longitud: number; // Ubicación geográfica - longitud
   createdAt: Date;
   updatedAt: Date;
 
@@ -18,6 +20,8 @@ export class Equipo {
     this.vehiculoId = data.vehiculoId || '';
     this.disponible = data.disponible !== undefined ? data.disponible : true;
     this.ciudadId = data.ciudadId || '';
+    this.latitud = data.latitud || 0;
+    this.longitud = data.longitud || 0;
     this.createdAt = data.createdAt || new Date();
     this.updatedAt = data.updatedAt || new Date();
   }

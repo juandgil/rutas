@@ -12,6 +12,7 @@ export class Evento {
   impacto: NivelImpacto;
   fecha: Date;
   activo: boolean;
+  metadatos?: Record<string, any>; // Datos adicionales del evento
   createdAt: Date;
   updatedAt: Date;
 
@@ -26,6 +27,7 @@ export class Evento {
     this.impacto = data.impacto || NivelImpacto.MEDIO;
     this.fecha = data.fecha || new Date();
     this.activo = data.activo !== undefined ? data.activo : true;
+    this.metadatos = data.metadatos || {};
     this.createdAt = data.createdAt || new Date();
     this.updatedAt = data.updatedAt || new Date();
   }

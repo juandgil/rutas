@@ -13,6 +13,7 @@ const TYPES = {
   IAuthService: Symbol.for('IAuthService'),
   IRutaService: Symbol.for('IRutaService'),
   IOptimizacionService: Symbol.for('IOptimizacionService'),
+  IEventoService: Symbol.for('IEventoService'),
   IPubSubService: Symbol.for('IPubSubService'),
   ICacheService: Symbol.for('ICacheService'),
 

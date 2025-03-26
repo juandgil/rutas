@@ -6,6 +6,8 @@ import { Evento } from '../../domain/entities/evento.entity';
 import { IPubSubService } from '../interfaces/pubsub-service.interface';
 import { ICacheService } from '../../infrastructure/cache/redis-client';
 import { v4 as uuidv4 } from 'uuid';
+// Importar APIs externas
+import { IGpsApi, ITraficoClimaApi, NivelTrafico, NivelImpacto } from '../../domain/interfaces/external-apis.interface';
 
 @injectable()
 export class EventoService implements IEventoService {
@@ -15,10 +17,73 @@ export class EventoService implements IEventoService {
   constructor(
     @inject(TYPES.IEventoRepository) private eventoRepository: IEventoRepository,
     @inject(TYPES.IPubSubService) private pubSubService: IPubSubService,
-    @inject(TYPES.ICacheService) private cacheService: ICacheService
+    @inject(TYPES.ICacheService) private cacheService: ICacheService,
+    // Inyectar APIs externas
+    @inject(TYPES.IGpsApi) private gpsApi: IGpsApi,
+    @inject(TYPES.ITraficoClimaApi) private traficoClimaApi: ITraficoClimaApi
   ) {}
 
   async registrarEvento(evento: Partial<Evento>): Promise<Evento> {
+    // Validar datos del evento
+    if (!evento.tipo) {
+      throw new Error('El tipo de evento es obligatorio');
+    }
+    
+    if (!evento.descripcion) {
+      throw new Error('La descripción del evento es obligatoria');
+    }
+    
+    if (!evento.ciudadId) {
+      throw new Error('El ID de la ciudad es obligatorio');
+    }
+    
+    // Para eventos relacionados con tráfico o clima, validar con la API externa
+    if (evento.tipo === 'TRAFICO') {
+      const condicionesTrafico = await this.traficoClimaApi.obtenerCondicionesTrafico(evento.ciudadId);
+      
+      // Solo registrar si el nivel de tráfico es alto (validación)
+      if (condicionesTrafico.nivel !== NivelTrafico.ALTO) {
+        throw new Error('No se puede registrar un evento de tráfico cuando las condiciones son normales o de nivel medio');
+      }
+      
+      // Añadir información adicional al evento
+      evento.metadatos = {
+        ...evento.metadatos,
+        nivelTraficoActual: condicionesTrafico.nivel,
+        reporteTrafico: condicionesTrafico.descripcion
+      };
+    } else if (evento.tipo === 'CLIMA') {
+      const condicionesClima = await this.traficoClimaApi.obtenerCondicionesClima(evento.ciudadId);
+      
+      // Añadir información adicional al evento
+      evento.metadatos = {
+        ...evento.metadatos,
+        condicionClimaActual: condicionesClima.estado,
+        reporteClima: condicionesClima.descripcion
+      };
+    }
+    
+    // Si el evento está asociado a un equipo, obtener su ubicación actual
+    if (evento.equipoId) {
+      try {
+        const ubicacionGps = await this.gpsApi.obtenerUbicacion(evento.equipoId);
+        
+        // Añadir ubicación al evento
+        if (ubicacionGps) {
+          evento.metadatos = {
+            ...evento.metadatos,
+            ubicacionEquipo: {
+              latitud: ubicacionGps.latitud,
+              longitud: ubicacionGps.longitud,
+              timestamp: ubicacionGps.timestamp
+            }
+          };
+        }
+      } catch (error) {
+        console.warn(`No se pudo obtener la ubicación del equipo ${evento.equipoId}:`, error);
+      }
+    }
+
     // Asignar ID y fechas
     const nuevoEvento: Evento = new Evento({
       ...evento,
@@ -34,7 +99,9 @@ export class EventoService implements IEventoService {
 
     // Invalidar cache
     await this.cacheService.del(`eventos:ciudad:${eventoCreado.ciudadId}`);
-    await this.cacheService.del(`eventos:equipo:${eventoCreado.equipoId}`);
+    if (eventoCreado.equipoId) {
+      await this.cacheService.del(`eventos:equipo:${eventoCreado.equipoId}`);
+    }
     await this.cacheService.del('eventos:activos');
 
     // Publicar evento para notificar a los servicios interesados
@@ -45,51 +112,51 @@ export class EventoService implements IEventoService {
 
   async obtenerEventosActivos(): Promise<Evento[]> {
     // Intentar obtener de cache
-    const cachedEventos = await this.cacheService.get('eventos:activos');
+    const cachedEventos = await this.cacheService.get<Evento[]>('eventos:activos');
     
     if (cachedEventos) {
-      return JSON.parse(cachedEventos);
+      return cachedEventos;
     }
 
     // Si no está en cache, obtener de la base de datos
     const eventos = await this.eventoRepository.findActivos();
     
     // Guardar en cache
-    await this.cacheService.set('eventos:activos', JSON.stringify(eventos), this.CACHE_TTL);
+    await this.cacheService.set('eventos:activos', eventos, this.CACHE_TTL);
     
     return eventos;
   }
 
   async obtenerEventosPorCiudad(ciudadId: string): Promise<Evento[]> {
     // Intentar obtener de cache
-    const cachedEventos = await this.cacheService.get(`eventos:ciudad:${ciudadId}`);
+    const cachedEventos = await this.cacheService.get<Evento[]>(`eventos:ciudad:${ciudadId}`);
     
     if (cachedEventos) {
-      return JSON.parse(cachedEventos);
+      return cachedEventos;
     }
 
     // Si no está en cache, obtener de la base de datos
     const eventos = await this.eventoRepository.findByCiudad(ciudadId);
     
     // Guardar en cache
-    await this.cacheService.set(`eventos:ciudad:${ciudadId}`, JSON.stringify(eventos), this.CACHE_TTL);
+    await this.cacheService.set(`eventos:ciudad:${ciudadId}`, eventos, this.CACHE_TTL);
     
     return eventos;
   }
 
   async obtenerEventosPorEquipo(equipoId: string): Promise<Evento[]> {
     // Intentar obtener de cache
-    const cachedEventos = await this.cacheService.get(`eventos:equipo:${equipoId}`);
+    const cachedEventos = await this.cacheService.get<Evento[]>(`eventos:equipo:${equipoId}`);
     
     if (cachedEventos) {
-      return JSON.parse(cachedEventos);
+      return cachedEventos;
     }
 
     // Si no está en cache, obtener de la base de datos
     const eventos = await this.eventoRepository.findByEquipo(equipoId);
     
     // Guardar en cache
-    await this.cacheService.set(`eventos:equipo:${equipoId}`, JSON.stringify(eventos), this.CACHE_TTL);
+    await this.cacheService.set(`eventos:equipo:${equipoId}`, eventos, this.CACHE_TTL);
     
     return eventos;
   }

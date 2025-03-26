@@ -1,14 +1,20 @@
 import { IBaseRepository } from '../../domain/repositories/base.repository';
 import { IDatabase } from '../database/database';
-import { injectable } from 'inversify';
+import { injectable, unmanaged } from 'inversify';
 
 @injectable()
 export abstract class BaseRepository<T, ID> implements IBaseRepository<T, ID> {
+  protected tableName: string;
+  protected pkColumn: string;
+
   constructor(
     protected db: IDatabase,
-    protected tableName: string,
-    protected pkColumn: string = 'id'
-  ) {}
+    @unmanaged() tableName?: string,
+    @unmanaged() pkColumn?: string
+  ) {
+    this.tableName = tableName || '';
+    this.pkColumn = pkColumn || 'id';
+  }
 
   async findById(id: ID): Promise<T | null> {
     try {

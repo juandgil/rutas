@@ -1,0 +1,14 @@
+@baseUrl = http://localhost:3000
+
+### Autenticación de usuario
+# @name login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin@ejemplo.com",
+  "password": "admin123"
+}
+
+### Extraer token de la respuesta
+@authToken = {{login.response.body.token}} 

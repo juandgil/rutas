@@ -1,0 +1,66 @@
+@baseUrl = http://localhost:3000
+
+### Primero ejecutar auth.http para obtener un token
+### Luego reemplazar el valor de authToken con el token obtenido
+@authToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+### Las siguientes rutas son simuladas y están disponibles solo para documentación
+### No son endpoints reales de la API, sino representaciones de las APIs externas
+
+### Obtener ubicación GPS de un equipo
+# GET {{baseUrl}}/api/gps/ubicacion/eq-001
+# Authorization: Bearer {{authToken}}
+# Content-Type: application/json
+
+### Obtener historial GPS de un equipo
+# GET {{baseUrl}}/api/gps/historico/eq-001?desde=2023-10-24T00:00:00Z&hasta=2023-10-25T00:00:00Z
+# Authorization: Bearer {{authToken}}
+# Content-Type: application/json
+
+### Registrar ubicación GPS
+# POST {{baseUrl}}/api/gps/ubicacion
+# Authorization: Bearer {{authToken}}
+# Content-Type: application/json
+#
+# {
+#   "equipoId": "eq-001",
+#   "latitud": 4.624335,
+#   "longitud": -74.063644,
+#   "velocidad": 35.5
+# }
+
+### Obtener condiciones de tráfico
+# GET {{baseUrl}}/api/trafico-clima/trafico/bogota
+# Authorization: Bearer {{authToken}}
+# Content-Type: application/json
+
+### Obtener condiciones climáticas
+# GET {{baseUrl}}/api/trafico-clima/clima/bogota
+# Authorization: Bearer {{authToken}}
+# Content-Type: application/json
+
+### Obtener impacto de ruta
+# POST {{baseUrl}}/api/trafico-clima/impacto
+# Authorization: Bearer {{authToken}}
+# Content-Type: application/json
+#
+# {
+#   "origen": {
+#     "latitud": 4.624335,
+#     "longitud": -74.063644
+#   },
+#   "destino": {
+#     "latitud": 4.6664,
+#     "longitud": -74.0529
+#   }
+# }
+
+### Obtener capacidad del vehículo
+# GET {{baseUrl}}/api/vehiculos/capacidad/veh-001
+# Authorization: Bearer {{authToken}}
+# Content-Type: application/json
+
+### Verificar disponibilidad del vehículo
+# GET {{baseUrl}}/api/vehiculos/disponibilidad/veh-001
+# Authorization: Bearer {{authToken}}
+# Content-Type: application/json 

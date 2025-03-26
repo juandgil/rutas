@@ -8,7 +8,7 @@ import { TYPES } from '../ioc/types';
 @injectable()
 export class EquipoRepository extends BaseRepository<Equipo, string> implements IEquipoRepository {
   constructor(@inject(TYPES.IDatabase) db: IDatabase) {
-    super(db, 'equipos');
+    super(db, 'equipos', 'id');
   }
 
   async findByVehiculoId(vehiculoId: string): Promise<Equipo[]> {

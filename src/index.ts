@@ -3,10 +3,13 @@ import { InversifyExpressServer } from 'inversify-express-utils';
 import * as express from 'express';
 import * as winston from 'winston';
 import * as expressWinston from 'express-winston';
-import * as swaggerUi from 'swagger-ui-express';
+import cors from 'cors';
 
-// Importar contenedor IoC (se creará después)
+// Importar contenedor IoC
 import { container } from './infrastructure/ioc/container';
+
+// Importar configuración de Swagger
+import { setupSwagger } from './infrastructure/swagger';
 
 // Bootstrap de la aplicación
 const server = new InversifyExpressServer(container);
@@ -15,6 +18,13 @@ server.setConfig((app) => {
   // Configuración de middleware
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+
+  // Configurar CORS usando el paquete cors
+  app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization']
+  }));
 
   // Configurar logging
   app.use(expressWinston.logger({
@@ -32,17 +42,7 @@ server.setConfig((app) => {
   }));
 
   // Configurar Swagger para documentación de API
-  const swaggerDocument = {
-    openapi: '3.0.0',
-    info: {
-      title: 'API de Optimización de Rutas',
-      version: '1.0.0',
-      description: 'API para optimización de rutas de entrega en tiempo real'
-    },
-    // Las rutas se agregarán más adelante
-  };
-
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+  setupSwagger(app);
 });
 
 // Capturar errores globales
