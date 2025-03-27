@@ -12,15 +12,20 @@ import {
 import { ICacheService } from '../cache/redis-client';
 import { inject } from 'inversify';
 import { TYPES } from '../ioc/types';
+import axios from 'axios';
+import config from '../config/config';
 
 /**
  * Implementación simulada de la API de tráfico y clima
+ * que ahora consume los endpoints HTTP
  */
 @injectable()
 export class TraficoClimaApiMock implements ITraficoClimaApi {
   private readonly CACHE_KEY_TRAFICO = 'trafico:ciudad:';
   private readonly CACHE_KEY_CLIMA = 'clima:ciudad:';
-  private readonly CACHE_TTL = 1800; // 30 minutos en segundos
+  private readonly CACHE_TTL_TRAFICO = 600; // 10 minutos en segundos - El tráfico cambia con frecuencia
+  private readonly CACHE_TTL_CLIMA = 1800; // 30 minutos en segundos - El clima cambia menos rápido
+  private readonly API_BASE_URL = `http://localhost:${config.PORT || 3000}`;
 
   constructor(
     @inject(TYPES.ICacheService) private cacheService: ICacheService
@@ -33,20 +38,29 @@ export class TraficoClimaApiMock implements ITraficoClimaApi {
       const cachedData = await this.cacheService.get<CondicionTrafico>(cacheKey);
       
       if (cachedData) {
+        console.log(`[TraficoAPI] Condiciones de tráfico obtenidas de caché para ciudad ${ciudadId}`);
         return cachedData;
       }
       
-      // Simular datos de tráfico si no están en caché
-      const condicionTrafico = this.generarCondicionTraficoAleatoria(ciudadId);
+      // Consumir el endpoint HTTP
+      console.log(`[TraficoAPI] Consultando API para condiciones de tráfico en ciudad ${ciudadId}`);
+      const response = await axios.get(`${this.API_BASE_URL}/api/trafico-clima/trafico/${ciudadId}`);
+      
+      if (!response.data.success) {
+        throw new Error(`Error al obtener condiciones de tráfico: ${response.data.message}`);
+      }
+      
+      const condicionTrafico = response.data.data;
       
       // Guardar en caché
-      await this.cacheService.set(cacheKey, condicionTrafico, this.CACHE_TTL);
+      await this.cacheService.set(cacheKey, condicionTrafico, this.CACHE_TTL_TRAFICO);
+      console.log(`[TraficoAPI] Guardadas condiciones de tráfico en caché para ciudad ${ciudadId}`);
       
       return condicionTrafico;
     } catch (error) {
-      console.error('Error al obtener condiciones de tráfico:', error);
-      // En caso de error, devolver datos aleatorios como fallback
-      return this.generarCondicionTraficoAleatoria(ciudadId);
+      console.error(`[TraficoAPI] Error al obtener condiciones de tráfico para ciudad ${ciudadId}:`, error);
+      // En caso de error, devolver datos por defecto
+      return this.generarCondicionTraficoDefecto(ciudadId);
     }
   }
 
@@ -57,38 +71,52 @@ export class TraficoClimaApiMock implements ITraficoClimaApi {
       const cachedData = await this.cacheService.get<CondicionClima>(cacheKey);
       
       if (cachedData) {
+        console.log(`[ClimaAPI] Condiciones climáticas obtenidas de caché para ciudad ${ciudadId}`);
         return cachedData;
       }
       
-      // Simular datos de clima si no están en caché
-      const condicionClima = this.generarCondicionClimaAleatoria(ciudadId);
+      // Consumir el endpoint HTTP
+      console.log(`[ClimaAPI] Consultando API para condiciones climáticas en ciudad ${ciudadId}`);
+      const response = await axios.get(`${this.API_BASE_URL}/api/trafico-clima/clima/${ciudadId}`);
+      
+      if (!response.data.success) {
+        throw new Error(`Error al obtener condiciones climáticas: ${response.data.message}`);
+      }
+      
+      const condicionClima = response.data.data;
       
       // Guardar en caché
-      await this.cacheService.set(cacheKey, condicionClima, this.CACHE_TTL);
+      await this.cacheService.set(cacheKey, condicionClima, this.CACHE_TTL_CLIMA);
+      console.log(`[ClimaAPI] Guardadas condiciones climáticas en caché para ciudad ${ciudadId}`);
       
       return condicionClima;
     } catch (error) {
-      console.error('Error al obtener condiciones de clima:', error);
-      // En caso de error, devolver datos aleatorios como fallback
-      return this.generarCondicionClimaAleatoria(ciudadId);
+      console.error(`[ClimaAPI] Error al obtener condiciones climáticas para ciudad ${ciudadId}:`, error);
+      // En caso de error, devolver datos por defecto
+      return this.generarCondicionClimaDefecto(ciudadId);
     }
   }
 
   async obtenerImpactoRuta(origen: Coordenadas, destino: Coordenadas): Promise<ImpactoRuta> {
     try {
-      // Calcular distancia entre puntos (fórmula simplificada para demo)
-      const distancia = Math.sqrt(
-        Math.pow(destino.latitud - origen.latitud, 2) +
-        Math.pow(destino.longitud - origen.longitud, 2)
-      ) * 111.32; // Aproximación a km (1 grado ~ 111.32 km en el ecuador)
+      // Para el impacto de ruta no usamos caché porque depende de coordenadas específicas
+      // que pueden variar significativamente en cada consulta
       
-      // Generar un impacto aleatorio basado en la distancia
-      const impacto = this.generarImpactoRutaAleatorio(distancia);
+      // Consumir el endpoint HTTP
+      console.log(`[ImpactoAPI] Consultando API para impacto de ruta`);
+      const response = await axios.post(`${this.API_BASE_URL}/api/trafico-clima/impacto`, {
+        origen,
+        destino
+      });
       
-      return impacto;
+      if (!response.data.success) {
+        throw new Error(`Error al calcular impacto de ruta: ${response.data.message}`);
+      }
+      
+      return response.data.data;
     } catch (error) {
-      console.error('Error al calcular impacto de ruta:', error);
-      // En caso de error, devolver un impacto mínimo
+      console.error('[ImpactoAPI] Error al calcular impacto de ruta:', error);
+      // En caso de error, devolver un impacto por defecto
       return {
         tiempoAdicional: 5,
         distanciaAdicional: 1,
@@ -98,147 +126,32 @@ export class TraficoClimaApiMock implements ITraficoClimaApi {
   }
 
   /**
-   * Genera condiciones de tráfico aleatorias para simular datos
+   * Genera condiciones de tráfico por defecto en caso de error
    */
-  private generarCondicionTraficoAleatoria(ciudadId: string): CondicionTrafico {
-    const nivelesTrafico = Object.values(NivelTrafico);
-    const nivelAleatorio = nivelesTrafico[Math.floor(Math.random() * nivelesTrafico.length)];
-    
-    const descripciones = {
-      [NivelTrafico.BAJO]: 'Tráfico fluido en toda la ciudad',
-      [NivelTrafico.MEDIO]: 'Tráfico moderado en algunas vías principales',
-      [NivelTrafico.ALTO]: 'Tráfico denso en varias zonas de la ciudad',
-      [NivelTrafico.CONGESTIONADO]: 'Congestión severa en múltiples puntos'
-    };
-    
+  private generarCondicionTraficoDefecto(ciudadId: string): CondicionTrafico {
+    console.log(`[TraficoAPI] Generando condiciones de tráfico por defecto para ciudad ${ciudadId}`);
     return {
       ciudadId,
-      nivel: nivelAleatorio,
-      descripcion: descripciones[nivelAleatorio],
+      nivel: NivelTrafico.MEDIO,
+      descripcion: 'Condiciones de tráfico generadas por defecto (no se pudo obtener datos reales)',
       timestamp: new Date()
     };
   }
 
   /**
-   * Genera condiciones de clima aleatorias para simular datos
+   * Genera condiciones de clima por defecto en caso de error
    */
-  private generarCondicionClimaAleatoria(ciudadId: string): CondicionClima {
-    const estadosClima = Object.values(EstadoClima);
-    const estadoAleatorio = estadosClima[Math.floor(Math.random() * estadosClima.length)];
-    
-    // Generar datos realistas según el estado del clima
-    let temperatura = 0;
-    let lluvia = 0;
-    let viento = 0;
-    let visibilidad = 10;
-    
-    switch (estadoAleatorio) {
-      case EstadoClima.DESPEJADO:
-        temperatura = 18 + (Math.random() * 12); // 18-30°C
-        lluvia = 0;
-        viento = Math.random() * 10; // 0-10 km/h
-        visibilidad = 8 + (Math.random() * 2); // 8-10 km
-        break;
-      case EstadoClima.NUBLADO:
-        temperatura = 14 + (Math.random() * 10); // 14-24°C
-        lluvia = Math.random() * 0.5; // 0-0.5 mm
-        viento = 5 + (Math.random() * 15); // 5-20 km/h
-        visibilidad = 5 + (Math.random() * 3); // 5-8 km
-        break;
-      case EstadoClima.LLUVIOSO:
-        temperatura = 10 + (Math.random() * 8); // 10-18°C
-        lluvia = 2 + (Math.random() * 8); // 2-10 mm
-        viento = 10 + (Math.random() * 20); // 10-30 km/h
-        visibilidad = 2 + (Math.random() * 3); // 2-5 km
-        break;
-      case EstadoClima.TORMENTA:
-        temperatura = 8 + (Math.random() * 7); // 8-15°C
-        lluvia = 10 + (Math.random() * 20); // 10-30 mm
-        viento = 20 + (Math.random() * 40); // 20-60 km/h
-        visibilidad = 0.5 + (Math.random() * 1.5); // 0.5-2 km
-        break;
-    }
-    
-    // Descripciones según el estado del clima
-    const descripciones = {
-      [EstadoClima.DESPEJADO]: 'Cielo despejado, condiciones óptimas para circulación',
-      [EstadoClima.NUBLADO]: 'Cielo nublado, visibilidad aceptable',
-      [EstadoClima.LLUVIOSO]: 'Lluvia moderada, precaución en las vías',
-      [EstadoClima.TORMENTA]: 'Tormenta fuerte, visibilidad reducida y riesgo de inundaciones'
-    };
-    
+  private generarCondicionClimaDefecto(ciudadId: string): CondicionClima {
+    console.log(`[ClimaAPI] Generando condiciones climáticas por defecto para ciudad ${ciudadId}`);
     return {
       ciudadId,
-      estado: estadoAleatorio,
-      temperatura: Math.round(temperatura * 10) / 10, // Redondear a 1 decimal
-      lluvia: Math.round(lluvia * 10) / 10,
-      viento: Math.round(viento),
-      visibilidad: Math.round(visibilidad * 10) / 10,
-      descripcion: descripciones[estadoAleatorio],
+      estado: EstadoClima.NUBLADO,
+      temperatura: 18,
+      lluvia: 0,
+      viento: 5,
+      visibilidad: 8,
+      descripcion: 'Condiciones climáticas generadas por defecto (no se pudo obtener datos reales)',
       timestamp: new Date()
-    };
-  }
-
-  /**
-   * Genera un impacto de ruta aleatorio basado en la distancia
-   */
-  private generarImpactoRutaAleatorio(distancia: number): ImpactoRuta {
-    // A mayor distancia, mayor probabilidad de impacto alto
-    let nivelImpacto: NivelImpacto;
-    let factor = 0;
-    
-    if (distancia < 5) {
-      // Distancias cortas tienen impactos menores
-      const probabilidad = Math.random();
-      if (probabilidad < 0.7) {
-        nivelImpacto = NivelImpacto.BAJO;
-        factor = 0.1;
-      } else if (probabilidad < 0.9) {
-        nivelImpacto = NivelImpacto.MEDIO;
-        factor = 0.2;
-      } else {
-        nivelImpacto = NivelImpacto.ALTO;
-        factor = 0.3;
-      }
-    } else if (distancia < 15) {
-      // Distancias medias
-      const probabilidad = Math.random();
-      if (probabilidad < 0.4) {
-        nivelImpacto = NivelImpacto.BAJO;
-        factor = 0.15;
-      } else if (probabilidad < 0.8) {
-        nivelImpacto = NivelImpacto.MEDIO;
-        factor = 0.25;
-      } else {
-        nivelImpacto = Math.random() < 0.8 ? NivelImpacto.ALTO : NivelImpacto.CRITICO;
-        factor = 0.35;
-      }
-    } else {
-      // Distancias largas tienen impactos mayores
-      const probabilidad = Math.random();
-      if (probabilidad < 0.2) {
-        nivelImpacto = NivelImpacto.BAJO;
-        factor = 0.2;
-      } else if (probabilidad < 0.5) {
-        nivelImpacto = NivelImpacto.MEDIO;
-        factor = 0.3;
-      } else if (probabilidad < 0.8) {
-        nivelImpacto = NivelImpacto.ALTO;
-        factor = 0.4;
-      } else {
-        nivelImpacto = NivelImpacto.CRITICO;
-        factor = 0.5;
-      }
-    }
-    
-    // Calcular tiempo y distancia adicionales
-    const tiempoAdicional = Math.round(distancia * factor * 60); // en minutos
-    const distanciaAdicional = Math.round(distancia * factor * 10) / 10; // en km
-    
-    return {
-      tiempoAdicional,
-      distanciaAdicional,
-      nivelImpacto
     };
   }
 } 

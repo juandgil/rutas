@@ -3,15 +3,18 @@ import { IGpsApi, GpsUbicacion } from '../../domain/interfaces/external-apis.int
 import { ICacheService } from '../cache/redis-client';
 import { inject } from 'inversify';
 import { TYPES } from '../ioc/types';
-import { v4 as uuidv4 } from 'uuid';
+import axios from 'axios';
+import config from '../config/config';
 
 /**
  * Implementación simulada de la API de GPS para transportistas
+ * que ahora consume los endpoints HTTP
  */
 @injectable()
 export class GpsApiMock implements IGpsApi {
   private readonly CACHE_KEY_PREFIX = 'gps:ubicacion:';
-  private readonly CACHE_TTL = 300; // 5 minutos en segundos
+  private readonly CACHE_TTL = 120; // 2 minutos en segundos (la posición GPS cambia rápidamente)
+  private readonly API_BASE_URL = `http://localhost:${config.PORT || 3000}`;
 
   constructor(
     @inject(TYPES.ICacheService) private cacheService: ICacheService
@@ -24,77 +27,106 @@ export class GpsApiMock implements IGpsApi {
       const cachedData = await this.cacheService.get<GpsUbicacion>(cacheKey);
       
       if (cachedData) {
+        console.log(`[GpsAPI] Ubicación obtenida de caché para equipo ${equipoId}`);
         return cachedData;
       }
       
-      // Simular datos de GPS si no están en caché
-      const ubicacion = this.generarUbicacionAleatoria(equipoId);
+      // Consumir el endpoint HTTP
+      console.log(`[GpsAPI] Consultando API para ubicación de equipo ${equipoId}`);
+      const response = await axios.get(`${this.API_BASE_URL}/api/gps/ubicacion/${equipoId}`);
+      
+      if (!response.data.success) {
+        throw new Error(`Error al obtener ubicación GPS: ${response.data.message}`);
+      }
+      
+      const ubicacion = response.data.data;
       
       // Guardar en caché
       await this.cacheService.set(cacheKey, ubicacion, this.CACHE_TTL);
+      console.log(`[GpsAPI] Guardada ubicación en caché para equipo ${equipoId}`);
       
       return ubicacion;
     } catch (error) {
-      console.error('Error al obtener ubicación GPS:', error);
-      // En caso de error, devolver una ubicación aleatoria como fallback
-      return this.generarUbicacionAleatoria(equipoId);
+      console.error(`[GpsAPI] Error al obtener ubicación GPS para equipo ${equipoId}:`, error);
+      // En caso de error, generar una ubicación por defecto
+      return this.generarUbicacionPorDefecto(equipoId);
     }
   }
 
   async obtenerHistorico(equipoId: string, desde: Date, hasta: Date): Promise<GpsUbicacion[]> {
     try {
-      // Simular un histórico de ubicaciones
-      const cantidadRegistros = Math.floor((hasta.getTime() - desde.getTime()) / (5 * 60 * 1000)); // Un registro cada 5 minutos
-      const registros: GpsUbicacion[] = [];
+      // No usamos caché para datos históricos porque son consultas específicas
+      // y probablemente no se repitan exactamente igual
       
-      let timestamp = new Date(desde);
+      console.log(`[GpsAPI] Consultando API para historial GPS de equipo ${equipoId}`);
+      // Formatear fechas para la URL
+      const desdeStr = desde.toISOString();
+      const hastaStr = hasta.toISOString();
       
-      for (let i = 0; i < cantidadRegistros; i++) {
-        registros.push({
-          equipoId,
-          latitud: 4.6 + (Math.random() * 0.1), // Simular movimiento en Bogotá
-          longitud: -74.0 - (Math.random() * 0.1),
-          velocidad: Math.random() * 60, // Velocidad entre 0 y 60 km/h
-          timestamp: new Date(timestamp)
-        });
-        
-        timestamp = new Date(timestamp.getTime() + 5 * 60 * 1000); // Avanzar 5 minutos
+      const response = await axios.get(
+        `${this.API_BASE_URL}/api/gps/historico/${equipoId}?desde=${desdeStr}&hasta=${hastaStr}`
+      );
+      
+      if (!response.data.success) {
+        throw new Error(`Error al obtener historial GPS: ${response.data.message}`);
       }
       
-      return registros;
+      return response.data.data;
     } catch (error) {
-      console.error('Error al obtener histórico GPS:', error);
+      console.error(`[GpsAPI] Error al obtener historial GPS para equipo ${equipoId}:`, error);
+      // En caso de error, devolver una lista vacía
       return [];
     }
   }
 
   async registrarUbicacion(ubicacion: GpsUbicacion): Promise<GpsUbicacion> {
     try {
-      // Asignar ID único y guardar en caché
-      const nuevaUbicacion: GpsUbicacion = {
-        ...ubicacion,
-        timestamp: new Date()
-      };
+      console.log(`[GpsAPI] Registrando ubicación para equipo ${ubicacion.equipoId}`);
+      // Registrar en el sistema a través del endpoint HTTP
+      const response = await axios.post(`${this.API_BASE_URL}/api/gps/ubicacion`, ubicacion);
       
+      if (!response.data.success) {
+        throw new Error(`Error al registrar ubicación GPS: ${response.data.message}`);
+      }
+      
+      const nuevaUbicacion = response.data.data;
+      
+      // Actualizar la caché con la ubicación más reciente
       const cacheKey = `${this.CACHE_KEY_PREFIX}${ubicacion.equipoId}`;
-      await this.cacheService.set(cacheKey, JSON.stringify(nuevaUbicacion), this.CACHE_TTL);
+      await this.cacheService.set(cacheKey, nuevaUbicacion, this.CACHE_TTL);
+      console.log(`[GpsAPI] Ubicación registrada y actualizada en caché para equipo ${ubicacion.equipoId}`);
       
       return nuevaUbicacion;
     } catch (error) {
-      console.error('Error al registrar ubicación GPS:', error);
+      console.error(`[GpsAPI] Error al registrar ubicación GPS para equipo ${ubicacion.equipoId}:`, error);
       throw error;
     }
   }
 
   /**
-   * Genera una ubicación GPS aleatoria para simular datos
+   * Genera una ubicación GPS por defecto en caso de error
    */
-  private generarUbicacionAleatoria(equipoId: string): GpsUbicacion {
+  private generarUbicacionPorDefecto(equipoId: string): GpsUbicacion {
+    // Coordenadas predeterminadas para Bogotá según el equipo
+    const coordenadasPredeterminadas: Record<string, { lat: number; lng: number }> = {
+      'equipo-001': { lat: 4.65, lng: -74.05 },
+      'equipo-002': { lat: 4.61, lng: -74.08 },
+      'equipo-003': { lat: 4.70, lng: -74.04 },
+      'equipo-004': { lat: 4.67, lng: -74.07 },
+      'default': { lat: 4.63, lng: -74.06 } // Coordenadas por defecto
+    };
+    
+    // Obtener coordenadas según el equipo o usar las predeterminadas
+    const coords = equipoId in coordenadasPredeterminadas 
+      ? coordenadasPredeterminadas[equipoId] 
+      : coordenadasPredeterminadas['default'];
+    
+    console.log(`[GpsAPI] Generando ubicación por defecto para equipo ${equipoId}`);
     return {
       equipoId,
-      latitud: 4.6 + (Math.random() * 0.1), // Simular ubicaciones en Bogotá
-      longitud: -74.0 - (Math.random() * 0.1),
-      velocidad: Math.random() * 60, // Velocidad entre 0 y 60 km/h
+      latitud: coords.lat,
+      longitud: coords.lng,
+      velocidad: 0, // Detenido
       timestamp: new Date()
     };
   }

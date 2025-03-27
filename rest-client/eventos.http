@@ -15,9 +15,13 @@ Content-Type: application/json
   "descripcion": "Cierre vial por manifestación",
   "latitud": 4.6782,
   "longitud": -74.0582,
-  "ciudadId": "bogota",
-  "equipoId": "eq-001",
-  "impacto": "ALTO"
+  "ciudadId": "ciudad-001",
+  "equipoId": "equipo-001",
+  "impacto": "ALTO",
+  "metadatos": {
+    "tiempoEstimadoResolucion": "2 horas",
+    "autoridades": "Policía de tránsito presente en el lugar"
+  }
 }
 
 ### Obtener eventos activos
@@ -26,16 +30,16 @@ Authorization: Bearer {{authToken}}
 Content-Type: application/json
 
 ### Obtener eventos por ciudad
-GET {{baseUrl}}/api/eventos/ciudad/bogota
+GET {{baseUrl}}/api/eventos/ciudad/ciudad-001
 Authorization: Bearer {{authToken}}
 Content-Type: application/json
 
 ### Obtener eventos por equipo
-GET {{baseUrl}}/api/eventos/equipo/eq-001
+GET {{baseUrl}}/api/eventos/equipo/equipo-001
 Authorization: Bearer {{authToken}}
 Content-Type: application/json
 
 ### Marcar evento como inactivo
-PUT {{baseUrl}}/api/eventos/ev-001/inactivar
+PUT {{baseUrl}}/api/eventos/evento-123/inactivar
 Authorization: Bearer {{authToken}}
 Content-Type: application/json 

@@ -1,3 +1,7 @@
+// Cargar variables de entorno al inicio
+import * as dotenv from 'dotenv';
+dotenv.config();
+
 import 'reflect-metadata';
 import { InversifyExpressServer } from 'inversify-express-utils';
 import * as express from 'express';
@@ -58,9 +62,12 @@ server.setErrorConfig((app) => {
 const app = server.build();
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`Servidor ejecutándose en el puerto ${PORT}`);
-  console.log(`Documentación de API disponible en http://localhost:${PORT}/api-docs`);
-});
+// Solo iniciar el servidor si este archivo se ejecuta directamente
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Servidor ejecutándose en el puerto ${PORT}`);
+    console.log(`Documentación de API disponible en http://localhost:${PORT}/api-docs`);
+  });
+}
 
 export default app; 

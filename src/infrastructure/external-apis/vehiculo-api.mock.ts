@@ -8,9 +8,12 @@ import {
 import { ICacheService } from '../cache/redis-client';
 import { inject } from 'inversify';
 import { TYPES } from '../ioc/types';
+import axios from 'axios';
+import config from '../config/config';
 
 /**
  * Implementación simulada de la API de información de vehículos
+ * que ahora consume el endpoint HTTP
  */
 @injectable()
 export class VehiculoApiMock implements IVehiculoApi {
@@ -18,23 +21,7 @@ export class VehiculoApiMock implements IVehiculoApi {
   private readonly CACHE_KEY_DISPONIBILIDAD = 'vehiculo:disponibilidad:';
   private readonly CACHE_TTL = 86400; // 24 horas en segundos (la capacidad no cambia frecuentemente)
   private readonly CACHE_TTL_DISPONIBILIDAD = 3600; // 1 hora en segundos
-
-  // Datos simulados de vehículos
-  private readonly vehiculosDatosMock: Record<string, {
-    tipo: TipoVehiculo;
-    pesoMaximo: number;
-    volumenMaximo: number;
-  }> = {
-    'veh-001': { tipo: TipoVehiculo.FURGON, pesoMaximo: 1500, volumenMaximo: 12 },
-    'veh-002': { tipo: TipoVehiculo.FURGON, pesoMaximo: 2000, volumenMaximo: 15 },
-    'veh-003': { tipo: TipoVehiculo.CAMION, pesoMaximo: 4500, volumenMaximo: 30 },
-    'veh-004': { tipo: TipoVehiculo.MOTOCICLETA, pesoMaximo: 20, volumenMaximo: 0.2 },
-    // Valores por defecto para vehículos desconocidos
-    'default-camion': { tipo: TipoVehiculo.CAMION, pesoMaximo: 3500, volumenMaximo: 25 },
-    'default-furgon': { tipo: TipoVehiculo.FURGON, pesoMaximo: 1800, volumenMaximo: 14 },
-    'default-camioneta': { tipo: TipoVehiculo.CAMIONETA, pesoMaximo: 800, volumenMaximo: 5 },
-    'default-moto': { tipo: TipoVehiculo.MOTOCICLETA, pesoMaximo: 15, volumenMaximo: 0.15 }
-  };
+  private readonly API_BASE_URL = `http://localhost:${config.PORT || 3000}`;
 
   constructor(
     @inject(TYPES.ICacheService) private cacheService: ICacheService
@@ -47,20 +34,39 @@ export class VehiculoApiMock implements IVehiculoApi {
       const cachedData = await this.cacheService.get<CapacidadVehiculo>(cacheKey);
       
       if (cachedData) {
+        console.log(`[VehiculoAPI] Capacidad obtenida de caché para vehículo ${vehiculoId}`);
         return cachedData;
       }
       
-      // Simular datos de capacidad si no están en caché
-      const capacidadVehiculo = this.generarCapacidadVehiculo(vehiculoId);
+      // Consumir el endpoint que creamos para obtener los datos del vehículo
+      console.log(`[VehiculoAPI] Consultando API para vehículo ${vehiculoId}`);
+      const response = await axios.get(`${this.API_BASE_URL}/api/vehiculos/${vehiculoId}`);
+      
+      if (!response.data.success) {
+        throw new Error(`Error al obtener información del vehículo: ${response.data.message}`);
+      }
+      
+      const vehiculoInfo = response.data.data;
+      
+      // Mapear la respuesta al formato esperado
+      const capacidadVehiculo: CapacidadVehiculo = {
+        vehiculoId,
+        tipo: this.mapearTipoVehiculo(vehiculoInfo.tipo),
+        pesoMaximo: vehiculoInfo.capacidad.pesoMaximo,
+        volumenMaximo: vehiculoInfo.capacidad.volumenMaximo
+      };
       
       // Guardar en caché
       await this.cacheService.set(cacheKey, capacidadVehiculo, this.CACHE_TTL);
+      console.log(`[VehiculoAPI] Guardada capacidad en caché para vehículo ${vehiculoId}`);
       
       return capacidadVehiculo;
     } catch (error) {
-      console.error('Error al obtener capacidad del vehículo:', error);
-      // En caso de error, devolver capacidad por defecto
-      return this.obtenerCapacidadPorDefecto(vehiculoId);
+      console.error(`[VehiculoAPI] Error al obtener capacidad del vehículo ${vehiculoId}:`, error);
+      // En caso de error, devolver capacidad por defecto basada en el tipo inferido del ID
+      const capacidadPorDefecto = this.obtenerCapacidadPorDefecto(vehiculoId);
+      console.log(`[VehiculoAPI] Devolviendo capacidad por defecto para vehículo ${vehiculoId}:`, capacidadPorDefecto);
+      return capacidadPorDefecto;
     }
   }
 
@@ -71,19 +77,35 @@ export class VehiculoApiMock implements IVehiculoApi {
       const cachedData = await this.cacheService.get<DisponibilidadVehiculo>(cacheKey);
       
       if (cachedData) {
+        console.log(`[VehiculoAPI] Disponibilidad obtenida de caché para vehículo ${vehiculoId}`);
         return cachedData;
       }
       
-      // Simular datos de disponibilidad si no están en caché
-      const disponibilidad = this.generarDisponibilidadAleatoria(vehiculoId);
+      // Consumir el endpoint para obtener los datos del vehículo
+      console.log(`[VehiculoAPI] Consultando API para disponibilidad de vehículo ${vehiculoId}`);
+      const response = await axios.get(`${this.API_BASE_URL}/api/vehiculos/${vehiculoId}`);
+      
+      if (!response.data.success) {
+        throw new Error(`Error al obtener información del vehículo: ${response.data.message}`);
+      }
+      
+      const vehiculoInfo = response.data.data;
+      
+      // Mapear la respuesta al formato esperado
+      const disponibilidad: DisponibilidadVehiculo = {
+        vehiculoId,
+        disponible: vehiculoInfo.estado.disponible
+      };
       
       // Guardar en caché
       await this.cacheService.set(cacheKey, disponibilidad, this.CACHE_TTL_DISPONIBILIDAD);
+      console.log(`[VehiculoAPI] Guardada disponibilidad en caché para vehículo ${vehiculoId}`);
       
       return disponibilidad;
     } catch (error) {
-      console.error('Error al verificar disponibilidad del vehículo:', error);
+      console.error(`[VehiculoAPI] Error al verificar disponibilidad del vehículo ${vehiculoId}:`, error);
       // En caso de error, asumir que está disponible
+      console.log(`[VehiculoAPI] Asumiendo que el vehículo ${vehiculoId} está disponible (valor por defecto)`);
       return {
         vehiculoId,
         disponible: true
@@ -92,51 +114,64 @@ export class VehiculoApiMock implements IVehiculoApi {
   }
 
   /**
-   * Genera información de capacidad para un vehículo basada en datos preconfigurados o aleatorios
+   * Mapea las cadenas de tipo a los valores del enum TipoVehiculo
    */
-  private generarCapacidadVehiculo(vehiculoId: string): CapacidadVehiculo {
-    // Verificar si tenemos datos preconfigurados para este vehículo
-    if (this.vehiculosDatosMock[vehiculoId]) {
-      const datos = this.vehiculosDatosMock[vehiculoId];
-      return {
-        vehiculoId,
-        pesoMaximo: datos.pesoMaximo,
-        volumenMaximo: datos.volumenMaximo,
-        tipo: datos.tipo
-      };
+  private mapearTipoVehiculo(tipo: string): TipoVehiculo {
+    tipo = tipo.toUpperCase();
+    switch (tipo) {
+      case 'CAMION':
+        return TipoVehiculo.CAMION;
+      case 'FURGON':
+        return TipoVehiculo.FURGON;
+      case 'CAMIONETA':
+        return TipoVehiculo.CAMIONETA;
+      case 'MOTOCICLETA':
+        return TipoVehiculo.MOTOCICLETA;
+      default:
+        console.warn(`[VehiculoAPI] Tipo de vehículo desconocido: ${tipo}, usando FURGON por defecto`);
+        return TipoVehiculo.FURGON;
     }
-    
-    // Para vehículos desconocidos, generar datos aleatorios basados en algún patrón del ID
-    return this.obtenerCapacidadPorDefecto(vehiculoId);
   }
 
   /**
    * Obtiene capacidad por defecto para vehículos desconocidos
    */
   private obtenerCapacidadPorDefecto(vehiculoId: string): CapacidadVehiculo {
+    // Valores por defecto según el tipo inferido del ID
+    const vehiculosDatosMock: Record<string, {
+      tipo: TipoVehiculo;
+      pesoMaximo: number;
+      volumenMaximo: number;
+    }> = {
+      'default-camion': { tipo: TipoVehiculo.CAMION, pesoMaximo: 3500, volumenMaximo: 25 },
+      'default-furgon': { tipo: TipoVehiculo.FURGON, pesoMaximo: 1800, volumenMaximo: 14 },
+      'default-camioneta': { tipo: TipoVehiculo.CAMIONETA, pesoMaximo: 800, volumenMaximo: 5 },
+      'default-moto': { tipo: TipoVehiculo.MOTOCICLETA, pesoMaximo: 15, volumenMaximo: 0.15 }
+    };
+    
     // Determinar tipo de vehículo basado en el ID o asignar uno aleatorio
     let tipo: TipoVehiculo;
     let capacidadBase;
     
     if (vehiculoId.includes('camion')) {
       tipo = TipoVehiculo.CAMION;
-      capacidadBase = this.vehiculosDatosMock['default-camion'];
+      capacidadBase = vehiculosDatosMock['default-camion'];
     } else if (vehiculoId.includes('furgon')) {
       tipo = TipoVehiculo.FURGON;
-      capacidadBase = this.vehiculosDatosMock['default-furgon'];
+      capacidadBase = vehiculosDatosMock['default-furgon'];
     } else if (vehiculoId.includes('camioneta')) {
       tipo = TipoVehiculo.CAMIONETA;
-      capacidadBase = this.vehiculosDatosMock['default-camioneta'];
+      capacidadBase = vehiculosDatosMock['default-camioneta'];
     } else if (vehiculoId.includes('moto')) {
       tipo = TipoVehiculo.MOTOCICLETA;
-      capacidadBase = this.vehiculosDatosMock['default-moto'];
+      capacidadBase = vehiculosDatosMock['default-moto'];
     } else {
       // Asignar tipo aleatorio
       const tipos = Object.values(TipoVehiculo);
       tipo = tipos[Math.floor(Math.random() * tipos.length)];
       
       const defaultKey = `default-${tipo.toLowerCase()}`;
-      capacidadBase = this.vehiculosDatosMock[defaultKey] || this.vehiculosDatosMock['default-furgon'];
+      capacidadBase = vehiculosDatosMock[defaultKey] || vehiculosDatosMock['default-furgon'];
     }
     
     // Añadir algo de variación a los valores base
@@ -148,41 +183,6 @@ export class VehiculoApiMock implements IVehiculoApi {
       tipo,
       pesoMaximo: Math.round(capacidadBase.pesoMaximo * (1 + variacionPeso)),
       volumenMaximo: Math.round(capacidadBase.volumenMaximo * (1 + variacionVolumen) * 10) / 10
-    };
-  }
-
-  /**
-   * Genera disponibilidad aleatoria para un vehículo
-   */
-  private generarDisponibilidadAleatoria(vehiculoId: string): DisponibilidadVehiculo {
-    // Para simulación, asignar un 90% de probabilidad de disponibilidad
-    const disponible = Math.random() < 0.9;
-    
-    // Si no está disponible, generar un motivo y una fecha de disponibilidad futura
-    let razon: string | undefined;
-    let fechaDisponibilidad: Date | undefined;
-    
-    if (!disponible) {
-      const razonesNoDisponibilidad = [
-        'En mantenimiento programado',
-        'En reparación',
-        'Fuera de servicio',
-        'Asignado a otra ruta',
-        'Indisponible por procedimientos administrativos'
-      ];
-      
-      razon = razonesNoDisponibilidad[Math.floor(Math.random() * razonesNoDisponibilidad.length)];
-      
-      // Fecha de disponibilidad entre 1 y 24 horas en el futuro
-      const horasAdicionales = 1 + Math.floor(Math.random() * 24);
-      fechaDisponibilidad = new Date(Date.now() + horasAdicionales * 60 * 60 * 1000);
-    }
-    
-    return {
-      vehiculoId,
-      disponible,
-      razon,
-      fechaDisponibilidad
     };
   }
 } 

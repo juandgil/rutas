@@ -2,25 +2,25 @@
 
 ### Primero ejecutar auth.http para obtener un token
 ### Luego reemplazar el valor de authToken con el token obtenido
-@authToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+@authToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc0MzAzMDUwOCwiZXhwIjoxNzQzMTE2OTA4fQ.8G2Y_VsjoIRIK5FzD847GirMbBd40LzzGOBzMWBDhwI
 
 ### Optimizar ruta para un equipo
 # @name optimizarRuta
-GET {{baseUrl}}/api/rutas/optimizar/eq-001
+GET {{baseUrl}}/api/rutas/optimizar/equipo-001
 Authorization: Bearer {{authToken}}
 Content-Type: application/json
 
 ### Optimizar ruta para un equipo con fecha específica
-GET {{baseUrl}}/api/rutas/optimizar/eq-001?fecha=2023-10-25
+GET {{baseUrl}}/api/rutas/optimizar/equipo-001?fecha=2023-10-25
 Authorization: Bearer {{authToken}}
 Content-Type: application/json
 
 ### Replanificar ruta debido a un evento
 # @name replanificarRuta
-PUT {{baseUrl}}/api/rutas/replanificar/eq-001
+PUT {{baseUrl}}/api/rutas/replanificar/equipo-001
 Authorization: Bearer {{authToken}}
 Content-Type: application/json
 
 {
-  "eventoId": "ev-001"
+  "eventoId": "evento-123"
 } 

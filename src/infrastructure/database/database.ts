@@ -15,6 +15,17 @@ const dbConfig = {
   max: 30 // máximo número de clientes en el pool
 };
 
+// Diagnóstico: mostrar la configuración en desarrollo
+if (config.NODE_ENV === 'development') {
+  console.log('Configuración de base de datos:', {
+    host: dbConfig.host,
+    port: dbConfig.port,
+    database: dbConfig.database,
+    user: dbConfig.user,
+    // No mostrar la contraseña por seguridad
+  });
+}
+
 // Interfaz para la base de datos
 export interface IDatabase {
   query<T>(text: string, params?: any[]): Promise<T[]>;

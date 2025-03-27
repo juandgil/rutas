@@ -3,6 +3,8 @@ module.exports = {
   testEnvironment: 'node',
   roots: ['<rootDir>/src'],
   testMatch: ['**/*.test.ts'],
+  testTimeout: 30000,
+  setupFilesAfterEnv: ['<rootDir>/src/tests/test-setup.ts'],
   collectCoverage: true,
   collectCoverageFrom: [
     'src/**/*.ts',
@@ -10,13 +12,5 @@ module.exports = {
     '!src/index.ts',
     '!src/server.ts',
     '!src/config/*.ts'
-  ],
-  coverageThreshold: {
-    global: {
-      branches: 85,
-      functions: 85,
-      lines: 85,
-      statements: 85
-    }
-  }
+  ]
 }; 

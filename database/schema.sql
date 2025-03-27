@@ -100,6 +100,19 @@ CREATE TABLE IF NOT EXISTS slas (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Tabla de usuarios
+CREATE TABLE IF NOT EXISTS usuarios (
+  id VARCHAR(36) PRIMARY KEY,
+  username VARCHAR(100) NOT NULL UNIQUE,
+  password VARCHAR(100) NOT NULL,
+  nombre VARCHAR(100),
+  apellido VARCHAR(100),
+  role VARCHAR(20) NOT NULL, -- ADMIN, OPERADOR, TRANSPORTISTA
+  activo BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Crear índices para mejorar el rendimiento
 
 -- Índices para equipos
@@ -140,6 +153,10 @@ CREATE INDEX idx_gps_equipo_timestamp ON gps_registros(equipo_id, timestamp);
 CREATE INDEX idx_slas_prioridad ON slas(prioridad);
 CREATE INDEX idx_slas_activo ON slas(activo);
 
+-- Índice para búsqueda rápida por username
+CREATE INDEX idx_usuarios_username ON usuarios(username);
+CREATE INDEX idx_usuarios_role ON usuarios(role);
+
 -- Datos de ejemplo para pruebas
 
 -- SLAs
@@ -178,4 +195,11 @@ VALUES
   ('envio-005', 'ENVStd001', 'Centro Logístico Sur', 'Calle 34 #56-78', 4.63, -74.06, 'ciudad-001', 30, 2.0, 'PENDIENTE', 'sla-004', NULL, NULL),
   ('envio-006', 'ENVEco001', 'Centro Logístico Norte', 'Avenida 45 #67-89', 4.64, -74.07, 'ciudad-001', 35, 2.5, 'PENDIENTE', 'sla-005', NULL, NULL),
   ('envio-007', 'ENVExp003', 'Centro Logístico Este', 'Carrera 56 #78-90', 4.71, -74.03, 'ciudad-002', 5, 0.3, 'PENDIENTE', 'sla-001', NULL, NULL),
-  ('envio-008', 'ENVSame002', 'Centro Logístico Norte', 'Diagonal 67 #89-01', 4.67, -74.05, 'ciudad-001', 8, 0.4, 'PENDIENTE', 'sla-002', NULL, NULL); 
+  ('envio-008', 'ENVSame002', 'Centro Logístico Norte', 'Diagonal 67 #89-01', 4.67, -74.05, 'ciudad-001', 8, 0.4, 'PENDIENTE', 'sla-002', NULL, NULL);
+
+-- Usuarios de prueba (contraseña: admin123)
+INSERT INTO usuarios (id, username, password, nombre, apellido, role, activo)
+VALUES 
+  ('usr-001', 'admin', '$2b$10$X5EEEUqTkAb1Ttj9jGTiS.QI0/Myd5VlnFqsAVHCx5KNZmFcf5/ka', 'Administrador', 'Sistema', 'ADMIN', true),
+  ('usr-002', 'operador', '$2b$10$X5EEEUqTkAb1Ttj9jGTiS.QI0/Myd5VlnFqsAVHCx5KNZmFcf5/ka', 'Operador', 'Centro', 'OPERADOR', true),
+  ('usr-003', 'transportista', '$2b$10$X5EEEUqTkAb1Ttj9jGTiS.QI0/Myd5VlnFqsAVHCx5KNZmFcf5/ka', 'Conductor', 'Principal', 'TRANSPORTISTA', true); 

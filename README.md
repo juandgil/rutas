@@ -85,12 +85,57 @@ Este proyecto sigue los principios de Clean Architecture:
 
 ## API Endpoints
 
+### Autenticación
 - `POST /api/auth/login`: Autenticación de usuarios
+
+### Rutas
 - `GET /api/rutas/optimizar/:equipoId`: Calcula la ruta óptima para un equipo
 - `PUT /api/rutas/replanificar/:equipoId`: Replanifica la ruta para un equipo
+
+### Eventos
 - `POST /api/eventos`: Registra un nuevo evento inesperado
+- `GET /api/eventos/activos`: Obtiene los eventos activos
+- `PUT /api/eventos/:id/inactivar`: Marca un evento como inactivo
+
+### GPS
+- `GET /api/gps/ubicacion/:equipoId`: Obtiene la ubicación actual de un equipo
+- `GET /api/gps/historico/:equipoId`: Obtiene el historial de ubicaciones GPS de un equipo
+- `POST /api/gps/ubicacion`: Registra una nueva ubicación GPS para un equipo
+
+### Tráfico y Clima
+- `GET /api/trafico-clima/trafico/:ciudadId`: Obtiene condiciones de tráfico para una ciudad
+- `GET /api/trafico-clima/clima/:ciudadId`: Obtiene condiciones climáticas para una ciudad
+- `POST /api/trafico-clima/impacto`: Calcula el impacto de las condiciones en una ruta
+
+### Vehículos
+- `GET /api/vehiculos/:id`: Obtiene información detallada de un vehículo
+- `GET /api/vehiculos`: Obtiene lista de vehículos
 
 La documentación completa de la API está disponible en `/api-docs` cuando el servidor está en ejecución.
+
+## Documentación de API con Swagger
+
+El sistema utiliza Swagger para proporcionar documentación interactiva de todas las APIs disponibles. Para acceder a esta documentación:
+
+1. Inicia la aplicación con `npm run dev`
+2. Navega a `http://localhost:3000/api-docs` en tu navegador
+
+### Características de la documentación
+
+- Descripción detallada de todos los endpoints
+- Información sobre parámetros requeridos y opcionales
+- Modelos de datos de entrada y salida
+- Ejemplos de solicitudes y respuestas
+- Posibilidad de probar los endpoints directamente desde el navegador
+
+### Grupos de API Documentados
+
+- **Autenticación**: Operaciones de login y manejo de tokens JWT
+- **Rutas**: Optimización y replanificación de rutas de entrega
+- **Eventos**: Gestión de eventos inesperados que afectan las entregas
+- **GPS**: Seguimiento de ubicaciones de equipos de transporte
+- **Tráfico y Clima**: Consulta de condiciones que afectan las entregas
+- **Vehículos**: Información sobre la flota de transporte
 
 ## Flujo de Trabajo Diario
 
@@ -189,3 +234,29 @@ Durante todo el flujo operativo:
 - **Caché Inteligente**: Optimiza el rendimiento al almacenar datos frecuentemente consultados
 - **Sistema PubSub**: Permite notificaciones en tiempo real a todos los componentes del sistema
 - **Autenticación JWT**: Garantiza un acceso seguro a las funcionalidades según el rol del usuario
+
+## Pruebas
+
+Para ejecutar las pruebas, asegúrate de que el servidor no esté en ejecución y utiliza el siguiente comando:
+
+```bash
+npm test
+```
+
+Para ejecutar una prueba específica:
+
+```bash
+npx jest ruta/al/archivo.test.ts
+```
+
+Para ejecutar las pruebas en modo observador (se vuelven a ejecutar cuando cambian los archivos):
+
+```bash
+npm run test:watch
+```
+
+### Notas sobre las pruebas
+
+Las pruebas utilizan mocks para simular las dependencias externas como bases de datos y APIs. Para añadir nuevos mocks, edita el archivo `src/tests/test-setup.ts`.
+
+El archivo `src/index.ts` ha sido modificado para no iniciar el servidor automáticamente cuando se importa en las pruebas, lo que facilita las pruebas con Supertest.

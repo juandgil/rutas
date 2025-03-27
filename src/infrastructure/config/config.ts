@@ -1,3 +1,10 @@
+// Asegurarnos de cargar las variables de entorno
+import * as dotenv from 'dotenv';
+dotenv.config();
+
+// Diagnóstico para desarrollo
+console.log('Configuración DB_PORT:', process.env.DB_PORT);
+
 // Configuraciones de la aplicación
 export default {
   // Servidor
@@ -6,7 +13,7 @@ export default {
 
   // Base de datos
   DB_HOST: process.env.DB_HOST || 'localhost',
-  DB_PORT: process.env.DB_PORT || 5432,
+  DB_PORT: parseInt(process.env.DB_PORT || '5433', 10), // Valor por defecto cambiado a 5433 y forzado a número
   DB_NAME: process.env.DB_NAME || 'rutas_db',
   DB_USER: process.env.DB_USER || 'postgres',
   DB_PASSWORD: process.env.DB_PASSWORD || 'postgres',

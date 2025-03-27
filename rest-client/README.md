@@ -29,4 +29,17 @@ Estos archivos permiten probar la API de Optimización de Rutas usando la extens
 
 - Cada archivo agrupa endpoints relacionados para facilitar las pruebas
 - Las peticiones incluyen ejemplos de datos para probar cada funcionalidad
-- Los endpoints simulados de APIs externas en **apis-externas.http** están comentados ya que no son endpoints reales, solo están para documentación 
+- Los endpoints simulados de APIs externas en **apis-externas.http** están comentados ya que no son endpoints reales, solo están para documentación
+
+## Convenciones de IDs
+
+El sistema utiliza las siguientes convenciones para los identificadores:
+
+- **Equipos**: `equipo-001`, `equipo-002`, etc.
+- **Eventos**: `evento-123`, `evento-456`, etc.
+- **Ciudades**: `ciudad-001`, `ciudad-002`, etc.
+- **Vehículos**: `veh-001`, `veh-002`, etc. (histórico, serán actualizado próximamente a `vehiculo-001`)
+- **Envíos**: `envio-001`, `envio-002`, etc.
+- **SLAs**: `sla-001`, `sla-002`, etc.
+
+Asegúrate de utilizar estos formatos en las peticiones para mantener la consistencia con la base de datos 
