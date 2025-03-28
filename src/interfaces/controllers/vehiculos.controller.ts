@@ -5,6 +5,12 @@ import { TYPES } from '../../infrastructure/ioc/types';
 import { IVehiculoRepository } from '../../domain/repositories/vehiculo.repository';
 import { ApiResponse } from '../dtos/common.dto';
 
+/**
+ * @swagger
+ * tags:
+ *   name: Vehiculos
+ *   description: Endpoints para gestión de la flota de vehículos
+ */
 @controller('/api/vehiculos')
 export class VehiculosController {
   constructor(
@@ -26,9 +32,19 @@ export class VehiculosController {
    *         description: ID del vehículo
    *     responses:
    *       200:
-   *         description: Información del vehículo
-   *       404:
-   *         description: Vehículo no encontrado
+   *         description: Información del vehículo o mensaje informativo
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 message:
+   *                   type: string
+   *                 data:
+   *                   type: object
+   *                   nullable: true
    *       500:
    *         description: Error del servidor
    */
@@ -41,7 +57,7 @@ export class VehiculosController {
       const vehiculo = await this.vehiculoRepository.findById(vehiculoId);
       
       if (!vehiculo) {
-        return res.status(404).json(
+        return res.status(200).json(
           new ApiResponse(false, 'Vehículo no encontrado', null)
         );
       }

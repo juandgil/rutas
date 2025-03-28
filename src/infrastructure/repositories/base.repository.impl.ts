@@ -2,6 +2,41 @@ import { IBaseRepository } from '../../domain/repositories/base.repository';
 import { IDatabase } from '../database/database';
 import { injectable, unmanaged } from 'inversify';
 
+/**
+ * Función para convertir camelCase a snake_case
+ */
+function camelToSnake(key: string): string {
+  return key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+}
+
+/**
+ * Función para convertir objeto con propiedades en camelCase a objeto con propiedades en snake_case
+ * y manejar correctamente los tipos especiales como arrays para columnas JSONB
+ */
+function convertToSnakeCase(obj: Record<string, any>): Record<string, any> {
+  const result: Record<string, any> = {};
+  
+  Object.keys(obj).forEach(key => {
+    // Convertir camelCase a snake_case
+    const snakeKey = camelToSnake(key);
+    
+    // Manejar casos especiales
+    if (Array.isArray(obj[key])) {
+      // Convertir arrays a JSON string para campos JSONB
+      if (snakeKey === 'envios') {
+        result[snakeKey] = JSON.stringify(obj[key]);
+      } else {
+        result[snakeKey] = obj[key];
+      }
+    } else {
+      result[snakeKey] = obj[key];
+    }
+  });
+  
+  console.log('Conversión camelCase a snake_case:', { original: obj, convertido: result });
+  return result;
+}
+
 @injectable()
 export abstract class BaseRepository<T, ID> implements IBaseRepository<T, ID> {
   protected tableName: string;
@@ -39,8 +74,12 @@ export abstract class BaseRepository<T, ID> implements IBaseRepository<T, ID> {
 
   async create(entity: T): Promise<T> {
     try {
-      const columns = Object.keys(entity as object).filter(key => key !== 'id');
-      const values = columns.map(col => (entity as any)[col]);
+      // Convertir nombres de propiedades de camelCase a snake_case
+      const snakeCaseEntity = convertToSnakeCase(entity as Record<string, any>);
+      
+      // No filtrar el id, ya que necesitamos incluirlo en la consulta SQL
+      const columns = Object.keys(snakeCaseEntity);
+      const values = columns.map(col => snakeCaseEntity[col]);
       const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
       
       const query = `
@@ -48,6 +87,9 @@ export abstract class BaseRepository<T, ID> implements IBaseRepository<T, ID> {
         VALUES (${placeholders})
         RETURNING *
       `;
+      
+      console.log('Query de inserción:', query);
+      console.log('Valores:', values);
       
       const result = await this.db.query<T>(query, values);
       return result[0];
@@ -59,7 +101,10 @@ export abstract class BaseRepository<T, ID> implements IBaseRepository<T, ID> {
 
   async update(id: ID, entity: Partial<T>): Promise<T> {
     try {
-      const entries = Object.entries(entity as object);
+      // Convertir nombres de propiedades de camelCase a snake_case
+      const snakeCaseEntity = convertToSnakeCase(entity as Record<string, any>);
+      
+      const entries = Object.entries(snakeCaseEntity);
       const columns = entries.map(([key], i) => `${key} = $${i + 1}`).join(', ');
       const values = entries.map(([_, value]) => value);
       

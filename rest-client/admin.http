@@ -1,0 +1,11 @@
+@baseUrl = http://localhost:3000
+
+### Primero ejecutar auth.http para obtener un token
+### Luego reemplazar el valor de authToken con el token obtenido
+@authToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+### Reiniciar datos para pruebas
+# @name resetTestData
+POST {{baseUrl}}/api/admin/reset-test-data
+Authorization: Bearer {{authToken}}
+Content-Type: application/json 

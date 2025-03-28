@@ -10,7 +10,7 @@ import { Evento } from '../../domain/entities/evento.entity';
  * @swagger
  * tags:
  *   name: Eventos
- *   description: Endpoints para gestión de eventos inesperados
+ *   description: Endpoints para registro, consulta y gestión de eventos inesperados que afectan las rutas de entrega, como accidentes, bloqueos viales, condiciones climáticas adversas, etc.
  */
 @controller('/api/eventos')
 export class EventosController {
@@ -316,11 +316,19 @@ export class EventosController {
    *         description: ID del evento a inactivar
    *     responses:
    *       200:
-   *         description: Evento inactivado exitosamente
+   *         description: Evento inactivado exitosamente o mensaje informativo
    *         content:
    *           application/json:
    *             schema:
-   *               $ref: '#/components/schemas/Evento'
+   *               oneOf:
+   *                 - $ref: '#/components/schemas/Evento'
+   *                 - type: object
+   *                   properties:
+   *                     success:
+   *                       type: boolean
+   *                     message:
+   *                       type: string
+   *                       description: Mensaje informativo (Evento no encontrado, etc)
    *       401:
    *         description: No autorizado, token inválido o expirado
    *         content:
@@ -329,12 +337,6 @@ export class EventosController {
    *               $ref: '#/components/schemas/Error'
    *       403:
    *         description: Prohibido, el usuario no tiene permisos suficientes
-   *         content:
-   *           application/json:
-   *             schema:
-   *               $ref: '#/components/schemas/Error'
-   *       404:
-   *         description: Evento no encontrado
    *         content:
    *           application/json:
    *             schema:
@@ -363,7 +365,10 @@ export class EventosController {
       console.error('Error al marcar evento como inactivo:', error);
       
       if (error.message.includes('No se encontró el evento')) {
-        return res.status(404).json({ error: 'Evento no encontrado' });
+        return res.status(200).json({ 
+          success: false,
+          message: 'Evento no encontrado' 
+        });
       }
       
       return res.status(500).json({ error: 'Error interno del servidor' });

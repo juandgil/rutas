@@ -26,6 +26,24 @@ if (config.NODE_ENV === 'development') {
   });
 }
 
+/**
+ * Función para convertir nombres de columnas snake_case a camelCase
+ */
+function snakeToCamel(row: any): any {
+  if (!row || typeof row !== 'object') return row;
+  
+  const result: any = {};
+  
+  Object.keys(row).forEach(key => {
+    // Convertir snake_case a camelCase
+    const camelKey = key.replace(/_([a-z])/g, (match, letter) => letter.toUpperCase());
+    result[camelKey] = row[key];
+  });
+  
+  console.log('Conversión snake_case a camelCase:', { original: row, convertido: result });
+  return result;
+}
+
 // Interfaz para la base de datos
 export interface IDatabase {
   query<T>(text: string, params?: any[]): Promise<T[]>;
@@ -43,7 +61,9 @@ export class Database implements IDatabase {
 
   async query<T>(text: string, params?: any[]): Promise<T[]> {
     try {
-      return await this.db.any(text, params);
+      const rows = await this.db.any(text, params);
+      // Convertir nombres de columnas snake_case a camelCase
+      return rows.map((row: any) => snakeToCamel(row) as T);
     } catch (error) {
       console.error('Error en la consulta a la BD:', error);
       throw error;
@@ -52,7 +72,9 @@ export class Database implements IDatabase {
 
   async one<T>(text: string, params?: any[]): Promise<T> {
     try {
-      return await this.db.one(text, params);
+      const row = await this.db.one(text, params);
+      // Convertir nombres de columnas snake_case a camelCase
+      return snakeToCamel(row) as T;
     } catch (error) {
       console.error('Error en la consulta a la BD:', error);
       throw error;

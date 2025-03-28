@@ -28,6 +28,7 @@ import {
 import { Equipo } from '../../domain/entities/equipo.entity';
 import { Evento, TipoEvento } from '../../domain/entities/evento.entity';
 import { OptimizarRutaRequestDto } from '../dtos/ruta.dto';
+import { IDatabase } from '../../infrastructure/database/database';
 
 // Definición interna temporal para TramoDto
 interface TramoDto {
@@ -72,20 +73,55 @@ export class OptimizacionService implements IOptimizacionService {
   private readonly TOPIC_RUTAS = 'rutas';
 
   constructor(
-    @inject(TYPES.IEnvioRepository) private envioRepository: IEnvioRepository,
-    @inject(TYPES.IEquipoRepository) private equipoRepository: IEquipoRepository,
-    @inject(TYPES.IVehiculoRepository) private vehiculoRepository: IVehiculoRepository,
     @inject(TYPES.IRutaRepository) private rutaRepository: IRutaRepository,
-    @inject(TYPES.IGpsRepository) private gpsRepository: IGpsRepository,
-    @inject(TYPES.ISlaRepository) private slaRepository: ISlaRepository,
+    @inject(TYPES.IEquipoRepository) private equipoRepository: IEquipoRepository,
+    @inject(TYPES.IEnvioRepository) private envioRepository: IEnvioRepository,
+    @inject(TYPES.IVehiculoRepository) private vehiculoRepository: IVehiculoRepository,
     @inject(TYPES.IEventoRepository) private eventoRepository: IEventoRepository,
+    @inject(TYPES.ISlaRepository) private slaRepository: ISlaRepository,
     @inject(TYPES.IPubSubService) private pubSubService: IPubSubService,
-    @inject(TYPES.ICacheService) private cacheService: ICacheService,
-    // Inyectar las APIs externas
-    @inject(TYPES.IGpsApi) private gpsApi: IGpsApi,
     @inject(TYPES.ITraficoClimaApi) private traficoClimaApi: ITraficoClimaApi,
-    @inject(TYPES.IVehiculoApi) private vehiculoApi: IVehiculoApi
+    @inject(TYPES.IGpsApi) private gpsApi: IGpsApi,
+    @inject(TYPES.IVehiculoApi) private vehiculoApi: IVehiculoApi,
+    @inject(TYPES.IDatabase) private db: IDatabase
   ) {}
+
+  // Método para obtener la ubicación actual de un equipo
+  private async obtenerUbicacionEquipo(equipoId: string): Promise<{ latitud: number; longitud: number }> {
+    try {
+      // Primero intentamos obtener la ubicación desde la tabla normalizada
+      const query = `
+        SELECT latitud, longitud 
+        FROM equipos_ubicacion_actual 
+        WHERE equipo_id = $1
+      `;
+      
+      const result = await this.db.query<{ latitud: number; longitud: number }>(query, [equipoId]);
+      
+      if (result.length > 0) {
+        console.log(`Ubicación obtenida de equipos_ubicacion_actual para equipo ${equipoId}:`, result[0]);
+        return result[0];
+      }
+      
+      // Si no hay datos en la tabla normalizada, intentamos obtener del GPS API
+      console.log(`No se encontró ubicación en la tabla. Consultando API GPS para equipo ${equipoId}`);
+      const ubicacionGps = await this.gpsApi.obtenerUbicacion(equipoId);
+      
+      if (ubicacionGps) {
+        return {
+          latitud: ubicacionGps.latitud,
+          longitud: ubicacionGps.longitud
+        };
+      }
+      
+      // Si todo falla, devolvemos coordenadas por defecto
+      console.log(`No se pudo obtener ubicación para equipo ${equipoId}. Usando coordenadas por defecto`);
+      return { latitud: 4.65, longitud: -74.05 };
+    } catch (error) {
+      console.error(`Error al obtener ubicación del equipo ${equipoId}:`, error);
+      return { latitud: 4.65, longitud: -74.05 }; // Coordenadas por defecto
+    }
+  }
 
   async optimizarRuta(equipoId: string, fecha: Date): Promise<Ruta> {
     // Verificar si ya existe una ruta para este equipo y fecha
@@ -95,14 +131,24 @@ export class OptimizacionService implements IOptimizacionService {
       throw new Error('Ya existe una ruta optimizada para este equipo en la fecha especificada');
     }
 
+    console.log('Buscando equipo con ID:', equipoId);
     // Obtener el equipo
     const equipo = await this.equipoRepository.findById(equipoId);
+    console.log('Equipo encontrado:', equipo);
+    
     if (!equipo) {
       throw new Error('Equipo no encontrado');
     }
 
+    // Obtener la ubicación actual del equipo utilizando el nuevo método
+    const ubicacionEquipo = await this.obtenerUbicacionEquipo(equipoId);
+    console.log(`Ubicación del equipo ${equipoId}:`, ubicacionEquipo);
+
+    console.log('Buscando vehículo con ID:', equipo.vehiculoId);
     // Obtener el vehículo asociado al equipo
     const vehiculo = await this.vehiculoRepository.findById(equipo.vehiculoId);
+    console.log('Vehículo encontrado:', vehiculo);
+    
     if (!vehiculo) {
       throw new Error('Vehículo no encontrado');
     }
@@ -142,7 +188,7 @@ export class OptimizacionService implements IOptimizacionService {
     const enviosConPrioridad = await Promise.all(enviosFiltrados.map(async envio => {
       // Obtener el impacto de la ruta para este envío
       const impactoRuta = await this.traficoClimaApi.obtenerImpactoRuta(
-        { latitud: equipo.latitud, longitud: equipo.longitud },
+        { latitud: ubicacionEquipo.latitud, longitud: ubicacionEquipo.longitud },
         { latitud: envio.latitudDestino, longitud: envio.longitudDestino }
       );
 
@@ -204,7 +250,7 @@ export class OptimizacionService implements IOptimizacionService {
     let tiempoEstimado = 0;
 
     // Punto inicial (ubicación del equipo)
-    let puntoActual = { latitud: equipo.latitud, longitud: equipo.longitud };
+    let puntoActual = { latitud: ubicacionEquipo.latitud, longitud: ubicacionEquipo.longitud };
 
     // Calcular ruta para cada envío
     for (const envio of enviosSeleccionados) {
@@ -328,11 +374,8 @@ export class OptimizacionService implements IOptimizacionService {
       throw new Error('Equipo no encontrado');
     }
 
-    // Obtener la última ubicación GPS del equipo usando la API externa
-    const ubicacionGps = await this.gpsApi.obtenerUbicacion(equipoId);
-    if (!ubicacionGps) {
-      throw new Error('No se encontró la ubicación actual del equipo');
-    }
+    // Obtener la ubicación actual del equipo utilizando el nuevo método
+    const ubicacionEquipo = await this.obtenerUbicacionEquipo(equipoId);
 
     // Obtener condiciones actualizadas de tráfico y clima
     const condicionesTrafico = await this.traficoClimaApi.obtenerCondicionesTrafico(equipo.ciudadId);
@@ -347,14 +390,14 @@ export class OptimizacionService implements IOptimizacionService {
     const enviosConPrioridad = await Promise.all(enviosValidos.map(async envio => {
       // Obtener impacto de la ruta desde la ubicación actual
       const impactoRuta = await this.traficoClimaApi.obtenerImpactoRuta(
-        { latitud: ubicacionGps.latitud, longitud: ubicacionGps.longitud },
+        { latitud: ubicacionEquipo.latitud, longitud: ubicacionEquipo.longitud },
         { latitud: envio.latitudDestino, longitud: envio.longitudDestino }
       );
       
       // Calcular distancia desde la ubicación actual
       const distancia = Math.sqrt(
-        Math.pow(ubicacionGps.latitud - envio.latitudDestino, 2) +
-        Math.pow(ubicacionGps.longitud - envio.longitudDestino, 2)
+        Math.pow(ubicacionEquipo.latitud - envio.latitudDestino, 2) +
+        Math.pow(ubicacionEquipo.longitud - envio.longitudDestino, 2)
       ) * 111.32; // Aproximación km
       
       // Obtener prioridad del SLA
@@ -398,7 +441,7 @@ export class OptimizacionService implements IOptimizacionService {
     let nuevoTiempoEstimado = 0;
 
     // Punto inicial (ubicación actual del equipo)
-    let puntoActual = { latitud: ubicacionGps.latitud, longitud: ubicacionGps.longitud };
+    let puntoActual = { latitud: ubicacionEquipo.latitud, longitud: ubicacionEquipo.longitud };
 
     // Calcular ruta para cada envío
     for (const envio of nuevosEnviosOrdenados) {
@@ -448,9 +491,9 @@ export class OptimizacionService implements IOptimizacionService {
     // Registrar la ubicación actual del equipo
     await this.gpsApi.registrarUbicacion({
       equipoId,
-      latitud: ubicacionGps.latitud,
-      longitud: ubicacionGps.longitud,
-      velocidad: ubicacionGps.velocidad,
+      latitud: ubicacionEquipo.latitud,
+      longitud: ubicacionEquipo.longitud,
+      velocidad: 0, // Valor por defecto ya que no tenemos la velocidad
       timestamp: new Date()
     });
 

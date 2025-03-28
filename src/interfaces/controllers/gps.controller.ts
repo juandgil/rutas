@@ -9,6 +9,12 @@ import { IEquipoRepository } from '../../domain/repositories/equipo.repository';
 import { Gps } from '../../domain/entities/gps.entity';
 import { v4 as uuidv4 } from 'uuid';
 
+/**
+ * @swagger
+ * tags:
+ *   name: GPS
+ *   description: Endpoints para gestión y monitoreo de ubicaciones GPS de los equipos
+ */
 @controller('/api/gps')
 export class GpsController {
   constructor(
@@ -31,9 +37,19 @@ export class GpsController {
    *         description: ID del equipo
    *     responses:
    *       200:
-   *         description: Ubicación GPS actual
-   *       404:
-   *         description: Equipo no encontrado
+   *         description: Ubicación GPS actual o mensaje informativo
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 message:
+   *                   type: string
+   *                 data:
+   *                   type: object
+   *                   nullable: true
    *       500:
    *         description: Error del servidor
    */
@@ -45,7 +61,7 @@ export class GpsController {
       // Verificar que el equipo existe
       const equipo = await this.equipoRepository.findById(equipoId);
       if (!equipo) {
-        return res.status(404).json(
+        return res.status(200).json(
           new ApiResponse(false, 'Equipo no encontrado', null)
         );
       }
@@ -200,31 +216,55 @@ export class GpsController {
    * /api/gps/ubicacion:
    *   post:
    *     summary: Registra una nueva ubicación GPS para un equipo
+   *     description: Registra la posición actual de un equipo incluyendo latitud, longitud y velocidad
    *     tags: [GPS]
+   *     security:
+   *       - bearerAuth: []
    *     requestBody:
    *       required: true
    *       content:
    *         application/json:
    *           schema:
    *             type: object
+   *             required:
+   *               - equipoId
+   *               - latitud
+   *               - longitud
+   *               - velocidad
    *             properties:
    *               equipoId:
    *                 type: string
+   *                 description: ID del equipo
    *               latitud:
    *                 type: number
+   *                 format: float
+   *                 description: Latitud en grados decimales
    *               longitud:
    *                 type: number
+   *                 format: float
+   *                 description: Longitud en grados decimales
    *               velocidad:
    *                 type: number
+   *                 format: float
+   *                 description: Velocidad en km/h
+   *           example:
+   *             equipoId: "equipo-001"
+   *             latitud: 4.624335
+   *             longitud: -74.063644
+   *             velocidad: 35.5
    *     responses:
    *       201:
-   *         description: Ubicación GPS registrada
+   *         description: Ubicación GPS registrada exitosamente
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
    *       400:
-   *         description: Datos inválidos
+   *         description: Datos inválidos o incompletos
    *       404:
    *         description: Equipo no encontrado
    *       500:
-   *         description: Error del servidor
+   *         description: Error interno del servidor
    */
   @httpPost('/ubicacion')
   async registrarUbicacion(@request() req: Request, @response() res: Response): Promise<Response> {

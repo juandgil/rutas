@@ -63,6 +63,10 @@ const options: swaggerJSDoc.Options = {
       {
         name: 'Vehiculos',
         description: 'Operaciones para gestionar vehículos'
+      },
+      {
+        name: 'Admin',
+        description: 'Operaciones administrativas del sistema'
       }
     ]
   },

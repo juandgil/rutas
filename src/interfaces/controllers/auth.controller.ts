@@ -8,8 +8,8 @@ import { LoginRequestDto, LoginResponseDto } from '../../application/dtos/auth.d
 /**
  * @swagger
  * tags:
- *   name: Autenticación
- *   description: Endpoints para autenticación y autorización de usuarios
+ *   name: Auth
+ *   description: Endpoints para autenticación de usuarios, gestión de tokens JWT y control de acceso al sistema
  */
 @controller('/api/auth')
 export class AuthController {

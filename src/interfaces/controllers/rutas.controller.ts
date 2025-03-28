@@ -14,7 +14,7 @@ import * as express from 'express';
  * @swagger
  * tags:
  *   name: Rutas
- *   description: Endpoints para gestión y optimización de rutas
+ *   description: Endpoints para optimización, planificación y seguimiento de rutas de entrega
  */
 @controller('/api/rutas')
 export class RutasController {
@@ -47,13 +47,21 @@ export class RutasController {
    *         description: Fecha para la que se optimizará la ruta (formato YYYY-MM-DD). Por defecto es la fecha actual.
    *     responses:
    *       200:
-   *         description: Ruta optimizada creada exitosamente
+   *         description: Ruta optimizada o mensaje informativo
    *         content:
    *           application/json:
    *             schema:
-   *               $ref: '#/components/schemas/Ruta'
+   *               oneOf:
+   *                 - $ref: '#/components/schemas/Ruta'
+   *                 - type: object
+   *                   properties:
+   *                     success:
+   *                       type: boolean
+   *                     message:
+   *                       type: string
+   *                       description: Mensaje informativo (No hay envíos pendientes, Equipo no encontrado, etc)
    *       400:
-   *         description: Error en la solicitud o en los parámetros
+   *         description: Error en los parámetros de la solicitud
    *         content:
    *           application/json:
    *             schema:
@@ -130,7 +138,11 @@ export class RutasController {
           error.message.includes('No hay envíos que puedan caber') ||
           error.message.includes('Equipo no encontrado') ||
           error.message.includes('Vehículo no encontrado')) {
-        return res.status(400).json({ error: error.message });
+        // Cambiar a código 200 para mensajes informativos
+        return res.status(200).json({ 
+          success: false,
+          message: error.message 
+        });
       }
       
       return res.status(500).json({ error: 'Error interno del servidor' });
@@ -168,13 +180,21 @@ export class RutasController {
    *             eventoId: ev-001
    *     responses:
    *       200:
-   *         description: Ruta replanificada exitosamente
+   *         description: Ruta replanificada o mensaje informativo
    *         content:
    *           application/json:
    *             schema:
-   *               $ref: '#/components/schemas/Ruta'
+   *               oneOf:
+   *                 - $ref: '#/components/schemas/Ruta'
+   *                 - type: object
+   *                   properties:
+   *                     success:
+   *                       type: boolean
+   *                     message:
+   *                       type: string
+   *                       description: Mensaje informativo (El evento ya no está activo, No hay envíos pendientes, etc)
    *       400:
-   *         description: Error en la solicitud o en los parámetros
+   *         description: Error en los parámetros de la solicitud
    *         content:
    *           application/json:
    *             schema:
@@ -187,12 +207,6 @@ export class RutasController {
    *               $ref: '#/components/schemas/Error'
    *       403:
    *         description: Prohibido, el usuario no tiene permisos suficientes
-   *         content:
-   *           application/json:
-   *             schema:
-   *               $ref: '#/components/schemas/Error'
-   *       404:
-   *         description: No se encontró la ruta para replanificar
    *         content:
    *           application/json:
    *             schema:
@@ -232,8 +246,10 @@ export class RutasController {
       const sePuedeReplanificar = await this.optimizacionService.validarReplanificacion(equipoId, eventoId);
       
       if (!sePuedeReplanificar) {
-        return res.status(400).json({
-          error: 'Esta ruta ya fue replanificada por este evento'
+        // Cambiar a código 200 para mensajes informativos
+        return res.status(200).json({
+          success: false,
+          message: 'Esta ruta ya fue replanificada por este evento'
         });
       }
 
@@ -241,8 +257,10 @@ export class RutasController {
       const rutaReplanificada = await this.optimizacionService.replanificarRuta(equipoId, eventoId);
       
       if (!rutaReplanificada) {
-        return res.status(404).json({
-          error: 'No se encontró ruta para replanificar'
+        // Cambiar a código 200 con mensaje informativo
+        return res.status(200).json({
+          success: false,
+          message: 'No se encontró ruta para replanificar'
         });
       }
       
@@ -274,7 +292,11 @@ export class RutasController {
           error.message.includes('Solo se pueden replanificar rutas en progreso') ||
           error.message.includes('No hay envíos pendientes para replanificar') ||
           error.message.includes('No se encontró la ubicación actual del equipo')) {
-        return res.status(400).json({ error: error.message });
+        // Cambiar a código 200 para mensajes informativos
+        return res.status(200).json({ 
+          success: false,
+          message: error.message 
+        });
       }
       
       return res.status(500).json({ error: 'Error interno del servidor' });

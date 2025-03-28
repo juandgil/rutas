@@ -14,6 +14,12 @@ import {
 } from '../../domain/interfaces/external-apis.interface';
 import { IDatabase } from '../../infrastructure/database/database';
 
+/**
+ * @swagger
+ * tags:
+ *   name: TraficoClima
+ *   description: Endpoints para obtener información de tráfico, condiciones climáticas y calcular su impacto en las rutas de entrega
+ */
 @controller('/api/trafico-clima')
 export class TraficoClimaController {
   constructor(
@@ -35,9 +41,19 @@ export class TraficoClimaController {
    *         description: ID de la ciudad
    *     responses:
    *       200:
-   *         description: Información de tráfico
-   *       404:
-   *         description: Ciudad no encontrada
+   *         description: Información de tráfico o mensaje informativo
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 message:
+   *                   type: string
+   *                 data:
+   *                   type: object
+   *                   nullable: true
    *       500:
    *         description: Error del servidor
    */
@@ -49,7 +65,7 @@ export class TraficoClimaController {
       // Verificar que la ciudad existe
       const ciudad = await this.existeCiudad(ciudadId);
       if (!ciudad) {
-        return res.status(404).json(
+        return res.status(200).json(
           new ApiResponse(false, 'Ciudad no encontrada', null)
         );
       }
@@ -99,9 +115,19 @@ export class TraficoClimaController {
    *         description: ID de la ciudad
    *     responses:
    *       200:
-   *         description: Información del clima
-   *       404:
-   *         description: Ciudad no encontrada
+   *         description: Información del clima o mensaje informativo
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 message:
+   *                   type: string
+   *                 data:
+   *                   type: object
+   *                   nullable: true
    *       500:
    *         description: Error del servidor
    */
@@ -113,7 +139,7 @@ export class TraficoClimaController {
       // Verificar que la ciudad existe
       const ciudad = await this.existeCiudad(ciudadId);
       if (!ciudad) {
-        return res.status(404).json(
+        return res.status(200).json(
           new ApiResponse(false, 'Ciudad no encontrada', null)
         );
       }
@@ -225,19 +251,36 @@ export class TraficoClimaController {
     try {
       const { origen, destino } = req.body;
       
-      // Validar los datos recibidos
-      if (!origen || !destino || 
-          !this.esNumero(origen.latitud) || !this.esNumero(origen.longitud) ||
-          !this.esNumero(destino.latitud) || !this.esNumero(destino.longitud)) {
+      // Asegurarnos de que origen y destino existan
+      if (!origen || !destino) {
         return res.status(400).json(
-          new ApiResponse(false, 'Datos de coordenadas inválidos', null)
+          new ApiResponse(false, 'Datos de coordenadas inválidos: falta origen o destino', null)
+        );
+      }
+      
+      // Convertir valores de string a número si es necesario
+      const origenNumerico = {
+        latitud: typeof origen.latitud === 'string' ? parseFloat(origen.latitud) : origen.latitud,
+        longitud: typeof origen.longitud === 'string' ? parseFloat(origen.longitud) : origen.longitud
+      };
+      
+      const destinoNumerico = {
+        latitud: typeof destino.latitud === 'string' ? parseFloat(destino.latitud) : destino.latitud,
+        longitud: typeof destino.longitud === 'string' ? parseFloat(destino.longitud) : destino.longitud
+      };
+      
+      // Validar que las coordenadas sean números válidos
+      if (!this.esNumero(origenNumerico.latitud) || !this.esNumero(origenNumerico.longitud) ||
+          !this.esNumero(destinoNumerico.latitud) || !this.esNumero(destinoNumerico.longitud)) {
+        return res.status(400).json(
+          new ApiResponse(false, 'Datos de coordenadas inválidos: no son números válidos', null)
         );
       }
       
       // Calcular distancia entre puntos (fórmula simplificada para demo)
       const distancia = Math.sqrt(
-        Math.pow(destino.latitud - origen.latitud, 2) +
-        Math.pow(destino.longitud - origen.longitud, 2)
+        Math.pow(destinoNumerico.latitud - origenNumerico.latitud, 2) +
+        Math.pow(destinoNumerico.longitud - origenNumerico.longitud, 2)
       ) * 111.32; // Aproximación a km (1 grado ~ 111.32 km en el ecuador)
       
       // Generar un impacto basado en la distancia
@@ -299,12 +342,12 @@ export class TraficoClimaController {
       };
       
       return res.status(200).json(
-        new ApiResponse(true, 'Impacto calculado correctamente', impacto)
+        new ApiResponse(true, 'Impacto calculado exitosamente', impacto)
       );
     } catch (error) {
-      console.error('Error al calcular impacto:', error);
+      console.error('Error al calcular impacto de ruta:', error);
       return res.status(500).json(
-        new ApiResponse(false, 'Error al calcular el impacto', null)
+        new ApiResponse(false, 'Error al calcular el impacto de la ruta', null)
       );
     }
   }
