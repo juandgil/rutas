@@ -3,71 +3,29 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 import 'reflect-metadata';
-import { InversifyExpressServer } from 'inversify-express-utils';
-import * as express from 'express';
-import * as winston from 'winston';
-import * as expressWinston from 'express-winston';
-import cors from 'cors';
+import { createApp } from './infrastructure/express/app';
+import { env } from './infrastructure/config/env';
 
-// Importar contenedor IoC
-import { container } from './infrastructure/ioc/container';
+const startServer = async () => {
+  try {
+    const app = createApp();
+    const port = parseInt(env.PORT || '3000', 10);
 
-// Importar configuración de Swagger
-import { setupSwagger } from './infrastructure/swagger';
-
-// Bootstrap de la aplicación
-const server = new InversifyExpressServer(container);
-
-server.setConfig((app) => {
-  // Configuración de middleware
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
-
-  // Configurar CORS usando el paquete cors
-  app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization']
-  }));
-
-  // Configurar logging
-  app.use(expressWinston.logger({
-    transports: [
-      new winston.transports.Console()
-    ],
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.json()
-    ),
-    meta: true,
-    msg: "HTTP {{req.method}} {{req.url}}",
-    expressFormat: true,
-    colorize: true,
-  }));
-
-  // Configurar Swagger para documentación de API
-  setupSwagger(app);
-});
-
-// Capturar errores globales
-server.setErrorConfig((app) => {
-  app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.error(err.stack);
-    res.status(500).json({
-      error: err.message || 'Error interno del servidor'
+    // Iniciar servidor
+    app.listen(port, () => {
+      console.log(`Servidor iniciado en puerto ${port}`);
+      console.log(`Entorno: ${env.NODE_ENV}`);
+      console.log(`Base de datos: ${env.DB_HOST}:${env.DB_PORT}/${env.DB_NAME}`);
+      if (env.REDIS_ENABLED === 'true') {
+        console.log(`Redis: ${env.REDIS_HOST}:${env.REDIS_PORT}`);
+      }
+      console.log(`Documentación: http://localhost:${port}/api-docs`);
     });
-  });
-});
+  } catch (error) {
+    console.error('Error al iniciar el servidor:', error);
+    process.exit(1);
+  }
+};
 
-const app = server.build();
-const PORT = process.env.PORT || 3000;
-
-// Solo iniciar el servidor si este archivo se ejecuta directamente
-if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`Servidor ejecutándose en el puerto ${PORT}`);
-    console.log(`Documentación de API disponible en http://localhost:${PORT}/api-docs`);
-  });
-}
-
-export default app; 
+// Iniciar el servidor
+startServer(); 

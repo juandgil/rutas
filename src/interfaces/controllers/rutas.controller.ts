@@ -87,12 +87,6 @@ export class RutasController {
    */
   @httpGet('/optimizar/:equipoId')
   async optimizarRuta(@request() req: Request, @response() res: Response): Promise<Response> {
-    // Verificar autenticación y roles
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'No se proporcionó token de autenticación' });
-    }
-
     try {
       // Validar datos de entrada
       const { equipoId } = req.params;

@@ -38,42 +38,13 @@ const options: swaggerJSDoc.Options = {
       {
         bearerAuth: []
       }
-    ],
-    tags: [
-      {
-        name: 'Auth',
-        description: 'Operaciones de autenticación'
-      },
-      {
-        name: 'Rutas',
-        description: 'Operaciones relacionadas con optimización y replanificación de rutas'
-      },
-      {
-        name: 'Eventos',
-        description: 'Operaciones para gestionar eventos inesperados'
-      },
-      {
-        name: 'GPS',
-        description: 'Operaciones relacionadas con ubicaciones GPS de equipos'
-      },
-      {
-        name: 'TraficoClima',
-        description: 'Operaciones para consultar condiciones de tráfico y clima'
-      },
-      {
-        name: 'Vehiculos',
-        description: 'Operaciones para gestionar vehículos'
-      },
-      {
-        name: 'Admin',
-        description: 'Operaciones administrativas del sistema'
-      }
     ]
   },
   apis: [
     './src/interfaces/controllers/**/*.ts',
     './src/domain/entities/**/*.ts',
-    './src/domain/dtos/**/*.ts'
+    './src/domain/dtos/**/*.ts',
+    './src/infrastructure/swagger/schemas/**/*.ts'
   ]
 };
 

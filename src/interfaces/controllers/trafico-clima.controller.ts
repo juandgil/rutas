@@ -17,8 +17,8 @@ import { IDatabase } from '../../infrastructure/database/database';
 /**
  * @swagger
  * tags:
- *   name: TraficoClima
- *   description: Endpoints para obtener información de tráfico, condiciones climáticas y calcular su impacto en las rutas de entrega
+ *   name: APIs Externas
+ *   description: Endpoints que simulan interacción con servicios externos de tráfico, clima y cálculo de impacto
  */
 @controller('/api/trafico-clima')
 export class TraficoClimaController {
@@ -26,37 +26,6 @@ export class TraficoClimaController {
     @inject(TYPES.IDatabase) private db: IDatabase
   ) {}
 
-  /**
-   * @swagger
-   * /api/trafico-clima/trafico/{ciudadId}:
-   *   get:
-   *     summary: Obtiene condiciones de tráfico para una ciudad
-   *     tags: [TraficoClima]
-   *     parameters:
-   *       - in: path
-   *         name: ciudadId
-   *         required: true
-   *         schema:
-   *           type: string
-   *         description: ID de la ciudad
-   *     responses:
-   *       200:
-   *         description: Información de tráfico o mensaje informativo
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 success:
-   *                   type: boolean
-   *                 message:
-   *                   type: string
-   *                 data:
-   *                   type: object
-   *                   nullable: true
-   *       500:
-   *         description: Error del servidor
-   */
   @httpGet('/trafico/:ciudadId')
   async getTrafico(@request() req: Request, @response() res: Response): Promise<Response> {
     try {
@@ -100,37 +69,6 @@ export class TraficoClimaController {
     }
   }
 
-  /**
-   * @swagger
-   * /api/trafico-clima/clima/{ciudadId}:
-   *   get:
-   *     summary: Obtiene condiciones climáticas para una ciudad
-   *     tags: [TraficoClima]
-   *     parameters:
-   *       - in: path
-   *         name: ciudadId
-   *         required: true
-   *         schema:
-   *           type: string
-   *         description: ID de la ciudad
-   *     responses:
-   *       200:
-   *         description: Información del clima o mensaje informativo
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 success:
-   *                   type: boolean
-   *                 message:
-   *                   type: string
-   *                 data:
-   *                   type: object
-   *                   nullable: true
-   *       500:
-   *         description: Error del servidor
-   */
   @httpGet('/clima/:ciudadId')
   async getClima(@request() req: Request, @response() res: Response): Promise<Response> {
     try {
@@ -211,41 +149,6 @@ export class TraficoClimaController {
     }
   }
 
-  /**
-   * @swagger
-   * /api/trafico-clima/impacto:
-   *   post:
-   *     summary: Obtiene impacto de las condiciones de tráfico y clima en una ruta
-   *     tags: [TraficoClima]
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             type: object
-   *             properties:
-   *               origen:
-   *                 type: object
-   *                 properties:
-   *                   latitud:
-   *                     type: number
-   *                   longitud:
-   *                     type: number
-   *               destino:
-   *                 type: object
-   *                 properties:
-   *                   latitud:
-   *                     type: number
-   *                   longitud:
-   *                     type: number
-   *     responses:
-   *       200:
-   *         description: Información de impacto
-   *       400:
-   *         description: Datos inválidos
-   *       500:
-   *         description: Error del servidor
-   */
   @httpPost('/impacto')
   async getImpacto(@request() req: Request, @response() res: Response): Promise<Response> {
     try {
