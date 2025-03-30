@@ -112,29 +112,52 @@ export class GoogleCloudPubSubService implements IPubSubService {
   ): Promise<string> {
     await this.ensureInitialized();
     
+    // Crear un ID para la suscripción siguiendo el formato solicitado: rutas-events-tipo
+    const subId = subscriptionId || `${this.SUBSCRIPTION_PREFIX}-${tipoMensaje}`;
+    
+    // Verificar si ya existe la suscripción localmente
+    const subscriptionInMemory = this.subscriptions.has(subId);
+    if (subscriptionInMemory) {
+      console.log(`Reutilizando suscripción existente en memoria: ${subId}`);
+      return subId;
+    }
+
     try {
-      // Crear un ID para la suscripción siguiendo el formato solicitado: rutas-events-tipo
-      const subId = subscriptionId || `${this.SUBSCRIPTION_PREFIX}-${tipoMensaje}`;
+      // Verificar si la suscripción ya existe en Google Cloud primero
+      let subscription: Subscription;
       
-      // Verificar si ya existe la suscripción
-      const subscriptionExists = this.subscriptions.has(subId);
-      if (subscriptionExists) {
-        console.log(`Reutilizando suscripción existente: ${subId}`);
-        return subId;
-      }
-      
-      // Crear la suscripción con filtro por tipo de mensaje
-      const options = {
-        filter: `attributes.messageType = "${tipoMensaje}"`,
-        expirationPolicy: {
-          ttl: {
-            seconds: 24 * 60 * 60 // Expira en 24 horas si no se procesa
-          }
+      try {
+        // Intentar obtener la suscripción existente
+        const subscriptionPath = `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/subscriptions/${subId}`;
+        const [exists] = await this.pubSubClient.subscription(subId).exists();
+        
+        if (exists) {
+          console.log(`Reutilizando suscripción existente en GCP: ${subId}`);
+          subscription = this.pubSubClient.subscription(subId);
+        } else {
+          // Crear la suscripción con filtro por tipo de mensaje
+          const options = {
+            filter: `attributes.messageType = "${tipoMensaje}"`,
+            expirationPolicy: {
+              ttl: {
+                seconds: 24 * 60 * 60 // Expira en 24 horas si no se procesa
+              }
+            }
+          };
+          
+          [subscription] = await this.mainTopic.createSubscription(subId, options);
+          console.log(`Creada suscripción para ${tipoMensaje}: ${subId}`);
         }
-      };
-      
-      const [subscription] = await this.mainTopic.createSubscription(subId, options);
-      console.log(`Creada suscripción para ${tipoMensaje}: ${subId}`);
+      } catch (error: any) {
+        // Si el error es que ya existe (código 6), utilizamos la existente
+        if (error.code === 6 && error.details?.includes('ALREADY_EXISTS')) {
+          console.log(`Reutilizando suscripción que ya existe en GCP: ${subId}`);
+          subscription = this.pubSubClient.subscription(subId);
+        } else {
+          // Si es otro tipo de error, lo propagamos
+          throw error;
+        }
+      }
       
       // Configurar el procesamiento de mensajes
       const messageHandler = async (message: Message) => {
@@ -171,7 +194,10 @@ export class GoogleCloudPubSubService implements IPubSubService {
       return subId;
     } catch (error) {
       console.error(`Error al suscribirse al tipo ${tipoMensaje}:`, error);
-      throw error;
+      
+      // A pesar del error, devolvemos el ID para que la aplicación pueda continuar
+      // Esto previene que un error en una suscripción rompa toda la aplicación
+      return subId;
     }
   }
   
@@ -183,15 +209,43 @@ export class GoogleCloudPubSubService implements IPubSubService {
     try {
       const subscription = this.subscriptions.get(subscriptionId);
       if (subscription) {
-        await subscription.subscription.delete();
+        // Eliminamos de la colección local primero
         this.subscriptions.delete(subscriptionId);
-        console.log(`Suscripción ${subscriptionId} cancelada`);
+        
+        try {
+          // Solo intentamos eliminar si existe localmente
+          const subscriptionExists = await subscription.subscription.exists();
+          if (subscriptionExists[0]) {
+            await subscription.subscription.delete();
+            console.log(`Suscripción ${subscriptionId} cancelada`);
+          } else {
+            console.log(`La suscripción ${subscriptionId} ya no existe en GCP`);
+          }
+        } catch (error) {
+          // Si ocurre un error, lo registramos pero no lo propagamos
+          console.warn(`Error al eliminar suscripción ${subscriptionId} en GCP, continuando:`, error);
+        }
       } else {
-        console.warn(`Intento de cancelar suscripción inexistente: ${subscriptionId}`);
+        console.log(`La suscripción ${subscriptionId} no se encuentra en memoria, verificando en GCP...`);
+        
+        try {
+          // Verificar si existe en GCP aunque no esté en memoria
+          const gcloudSubscription = this.pubSubClient.subscription(subscriptionId);
+          const [exists] = await gcloudSubscription.exists();
+          
+          if (exists) {
+            await gcloudSubscription.delete();
+            console.log(`Suscripción ${subscriptionId} que no estaba en memoria fue cancelada en GCP`);
+          } else {
+            console.log(`No se encontró la suscripción ${subscriptionId} en GCP ni en memoria`);
+          }
+        } catch (error) {
+          console.warn(`Error al verificar/eliminar suscripción ${subscriptionId}:`, error);
+        }
       }
     } catch (error) {
       console.error(`Error al cancelar suscripción ${subscriptionId}:`, error);
-      throw error;
+      // No propagamos el error para evitar fallos en cascada
     }
   }
   

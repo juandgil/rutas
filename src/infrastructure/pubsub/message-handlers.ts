@@ -31,39 +31,54 @@ export class PubSubMessageHandlers {
    * Inicializa las suscripciones a los diferentes tipos de mensajes
    */
   private async initializeSubscriptions() {
+    console.log('Inicializando suscripciones PubSub');
+    
     try {
-      // Suscripción para actualizaciones GPS
-      const gpsSubscriptionId = await this.pubSubService.suscribir<Gps>(
-        'gps-updates', 
-        async (mensaje) => this.handleGpsUpdate(mensaje)
-      );
-      this.subscriptionIds.push(gpsSubscriptionId);
+      // Intentar inicializar cada suscripción por separado para que el fallo de una no afecte a las demás
+      const subscriptionPromises = [
+        this.subscribeSafely<Gps>('gps-updates', async (mensaje: Gps) => this.handleGpsUpdate(mensaje)),
+        this.subscribeSafely<{equipoId: string, fecha: string, requestId: string}>('route-optimizations', 
+          async (mensaje: {equipoId: string, fecha: string, requestId: string}) => this.handleRouteOptimization(mensaje)),
+        this.subscribeSafely<{equipoId: string, eventoId: string, requestId: string}>('route-replanifications', 
+          async (mensaje: {equipoId: string, eventoId: string, requestId: string}) => this.handleRouteReplanification(mensaje)),
+        this.subscribeSafely<any>('delivery-events', async (mensaje: any) => this.handleDeliveryEvent(mensaje))
+      ];
       
-      // Suscripción para optimización de rutas
-      const routeOptSubscriptionId = await this.pubSubService.suscribir<{equipoId: string, fecha: string, requestId: string}>(
-        'route-optimizations', 
-        async (mensaje) => this.handleRouteOptimization(mensaje)
-      );
-      this.subscriptionIds.push(routeOptSubscriptionId);
+      // Esperar a que todas las suscripciones se completen (o fallen)
+      const results = await Promise.allSettled(subscriptionPromises);
       
-      // Suscripción para replanificación de rutas
-      const routeReplanSubscriptionId = await this.pubSubService.suscribir<{equipoId: string, eventoId: string, requestId: string}>(
-        'route-replanifications', 
-        async (mensaje) => this.handleRouteReplanification(mensaje)
-      );
-      this.subscriptionIds.push(routeReplanSubscriptionId);
+      // Contar suscripciones exitosas
+      const successful = results.filter(r => r.status === 'fulfilled').length;
+      console.log(`Sistema suscrito a ${successful} de ${subscriptionPromises.length} tipos de mensajes`);
       
-      // Suscripción para eventos de entregas
-      const deliverySubscriptionId = await this.pubSubService.suscribir<any>(
-        'delivery-events',
-        async (mensaje) => this.handleDeliveryEvent(mensaje)
-      );
-      this.subscriptionIds.push(deliverySubscriptionId);
-      
-      console.log(`Sistema suscrito a todos los tipos de mensajes necesarios`);
-      console.log(`Suscripciones activas: ${this.subscriptionIds.length}`);
+      if (successful > 0) {
+        console.log(`Manejadores de mensajes PubSub inicializados correctamente`);
+      } else {
+        console.error('No se pudo inicializar ninguna suscripción PubSub');
+      }
     } catch (error) {
-      console.error('Error al inicializar suscripciones PubSub:', error);
+      console.error('Error al inicializar manejadores de mensajes PubSub:', error);
+      // No propagamos el error para evitar que falle todo el sistema
+    }
+  }
+  
+  /**
+   * Método auxiliar para crear suscripciones de manera segura
+   * @param topic Tema al que suscribirse
+   * @param handler Manejador para los mensajes
+   * @returns ID de la suscripción o null si falla
+   */
+  private async subscribeSafely<T>(topic: string, handler: (mensaje: T) => Promise<void>): Promise<string | null> {
+    try {
+      const subscriptionId = await this.pubSubService.suscribir<T>(topic, handler);
+      if (subscriptionId) {
+        this.subscriptionIds.push(subscriptionId);
+        console.log(`Suscripción a ${topic} completada con éxito: ${subscriptionId}`);
+      }
+      return subscriptionId;
+    } catch (error) {
+      console.error(`Error al suscribirse al topic ${topic}:`, error);
+      return null;
     }
   }
   

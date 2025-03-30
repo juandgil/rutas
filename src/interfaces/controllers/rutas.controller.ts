@@ -383,26 +383,53 @@ export class RutasController {
       timeoutId = setTimeout(() => {
         if (!resultReceived) {
           console.log(`Timeout para requestId: ${requestId}`);
-          this.pubSubService.cancelarSuscripcion(`rutas-events-result-listener`);
+          try {
+            this.pubSubService.cancelarSuscripcion(`rutas-events-result-listener`)
+              .catch(err => console.error(`Error al cancelar suscripción: ${err.message}`));
+          } catch (error) {
+            console.error(`Error al intentar cancelar suscripción: ${error}`);
+          }
           resolve(null);
         }
       }, this.REQUEST_TIMEOUT);
       
       // Suscribirse para recibir el resultado
-      this.pubSubService.suscribir<any>(
-        'route-optimizations-results',
-        async (mensaje) => {
-          // Solo procesar mensajes para este requestId
-          if (mensaje && mensaje.requestId === requestId) {
-            console.log(`Resultado recibido para requestId: ${requestId}`);
-            resultReceived = true;
-            clearTimeout(timeoutId);
-            await this.pubSubService.cancelarSuscripcion(`rutas-events-result-listener`);
-            resolve(mensaje);
-          }
-        },
-        `rutas-events-result-listener`
-      );
+      try {
+        this.pubSubService.suscribir<any>(
+          'route-optimizations-results',
+          async (mensaje) => {
+            try {
+              // Solo procesar mensajes para este requestId
+              if (mensaje && mensaje.requestId === requestId) {
+                console.log(`Resultado recibido para requestId: ${requestId}`);
+                resultReceived = true;
+                clearTimeout(timeoutId);
+                
+                try {
+                  await this.pubSubService.cancelarSuscripcion(`rutas-events-result-listener`);
+                } catch (error) {
+                  console.error(`Error al cancelar suscripción tras recibir respuesta: ${error}`);
+                  // Continuamos a pesar del error
+                }
+                
+                resolve(mensaje);
+              }
+            } catch (error) {
+              console.error(`Error procesando mensaje para requestId ${requestId}: ${error}`);
+              // No resolvemos aquí para permitir que el timeout maneje el caso
+            }
+          },
+          `rutas-events-result-listener`
+        ).catch(error => {
+          console.error(`Error al suscribirse a resultados: ${error}`);
+          // En caso de error en la suscripción, esperamos el timeout
+        });
+      } catch (error) {
+        console.error(`Error crítico al intentar suscribirse: ${error}`);
+        clearTimeout(timeoutId);
+        // Resolvemos con null para evitar que la promesa quede pendiente
+        resolve(null);
+      }
     });
   }
 } 
