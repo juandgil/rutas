@@ -1,6 +1,6 @@
 /**
  * @swagger
- * /api/auth/login:
+ * /auth/login:
  *   post:
  *     summary: Autenticar usuario y obtener token
  *     tags: [Auth]

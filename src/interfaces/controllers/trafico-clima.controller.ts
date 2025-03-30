@@ -1,4 +1,4 @@
-import { controller, httpGet, httpPost, request, response } from 'inversify-express-utils';
+import { controller, httpGet, httpPost, request, response, requestParam } from 'inversify-express-utils';
 import { inject } from 'inversify';
 import { Request, Response } from 'express';
 import { TYPES } from '../../infrastructure/ioc/types';
@@ -18,14 +18,21 @@ import { IDatabase } from '../../infrastructure/database/database';
  * @swagger
  * tags:
  *   name: APIs Externas
- *   description: Endpoints que simulan interacción con servicios externos de tráfico, clima y cálculo de impacto
+ *   description: Endpoints para integración con APIs externas de tráfico y clima
  */
-@controller('/api/trafico-clima')
+@controller('/trafico-clima')
 export class TraficoClimaController {
   constructor(
     @inject(TYPES.IDatabase) private db: IDatabase
   ) {}
 
+  /**
+   * @swagger
+   * /trafico-clima/trafico/{ciudadId}:
+   *   get:
+   *     summary: Obtiene condiciones de tráfico para una ciudad
+   *     tags: [APIs Externas]
+   */
   @httpGet('/trafico/:ciudadId')
   async getTrafico(@request() req: Request, @response() res: Response): Promise<Response> {
     try {
@@ -69,6 +76,13 @@ export class TraficoClimaController {
     }
   }
 
+  /**
+   * @swagger
+   * /trafico-clima/clima/{ciudadId}:
+   *   get:
+   *     summary: Obtiene condiciones climáticas para una ciudad
+   *     tags: [APIs Externas]
+   */
   @httpGet('/clima/:ciudadId')
   async getClima(@request() req: Request, @response() res: Response): Promise<Response> {
     try {
@@ -149,6 +163,13 @@ export class TraficoClimaController {
     }
   }
 
+  /**
+   * @swagger
+   * /trafico-clima/impacto:
+   *   post:
+   *     summary: Obtiene impacto de las condiciones de tráfico y clima en una ruta
+   *     tags: [APIs Externas]
+   */
   @httpPost('/impacto')
   async getImpacto(@request() req: Request, @response() res: Response): Promise<Response> {
     try {

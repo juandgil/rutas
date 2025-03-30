@@ -17,19 +17,19 @@ export class Evento {
   updatedAt: Date;
 
   constructor(data: Partial<Evento>) {
-    this.id = data.id || '';
-    this.equipoId = data.equipoId || '';
-    this.tipo = data.tipo || TipoEvento.TRAFICO;
-    this.descripcion = data.descripcion || '';
-    this.latitud = data.latitud || 0;
-    this.longitud = data.longitud || 0;
-    this.ciudadId = data.ciudadId || '';
-    this.impacto = data.impacto || NivelImpacto.MEDIO;
-    this.fecha = data.fecha || new Date();
-    this.activo = data.activo !== undefined ? data.activo : true;
-    this.metadatos = data.metadatos || {};
-    this.createdAt = data.createdAt || new Date();
-    this.updatedAt = data.updatedAt || new Date();
+    this.id = data.id ?? '';
+    this.equipoId = data.equipoId ?? '';
+    this.tipo = data.tipo ?? TipoEvento.TRAFICO;
+    this.descripcion = data.descripcion ?? '';
+    this.latitud = data.latitud ?? 0;
+    this.longitud = data.longitud ?? 0;
+    this.ciudadId = data.ciudadId ?? '';
+    this.impacto = data.impacto ?? NivelImpacto.MEDIO;
+    this.fecha = data.fecha ?? new Date();
+    this.activo = data.activo ?? true;
+    this.metadatos = data.metadatos ?? {};
+    this.createdAt = data.createdAt ?? new Date();
+    this.updatedAt = data.updatedAt ?? new Date();
   }
 }
 

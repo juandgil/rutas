@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { controller, httpPost, httpGet, httpPut, request, response } from 'inversify-express-utils';
+import { controller, httpPost, httpGet, httpPut, request, response, requestParam } from 'inversify-express-utils';
 import { inject } from 'inversify';
 import { TYPES } from '../../infrastructure/ioc/types';
 import { IEventoService } from '../../application/interfaces/evento-service.interface';
@@ -12,7 +12,7 @@ import { Evento } from '../../domain/entities/evento.entity';
  *   name: Eventos
  *   description: Endpoints para registro, consulta y gestión de eventos inesperados que afectan las rutas de entrega, como accidentes, bloqueos viales, condiciones climáticas adversas, etc.
  */
-@controller('/api/eventos')
+@controller('/eventos')
 export class EventosController {
   constructor(
     @inject(TYPES.IEventoService) private eventoService: IEventoService
@@ -20,7 +20,7 @@ export class EventosController {
 
   /**
    * @swagger
-   * /api/eventos:
+   * /eventos:
    *   post:
    *     summary: Registrar un nuevo evento inesperado
    *     tags: [Eventos]
@@ -141,7 +141,7 @@ export class EventosController {
 
   /**
    * @swagger
-   * /api/eventos/activos:
+   * /eventos/activos:
    *   get:
    *     summary: Obtener todos los eventos activos
    *     tags: [Eventos]
@@ -189,7 +189,7 @@ export class EventosController {
 
   /**
    * @swagger
-   * /api/eventos/ciudad/{ciudadId}:
+   * /eventos/ciudad/{ciudadId}:
    *   get:
    *     summary: Obtener eventos de una ciudad específica
    *     tags: [Eventos]
@@ -245,7 +245,7 @@ export class EventosController {
 
   /**
    * @swagger
-   * /api/eventos/equipo/{equipoId}:
+   * /eventos/equipo/{equipoId}:
    *   get:
    *     summary: Obtener eventos asociados a un equipo
    *     tags: [Eventos]
@@ -301,7 +301,7 @@ export class EventosController {
 
   /**
    * @swagger
-   * /api/eventos/{id}/inactivar:
+   * /eventos/{id}/inactivar:
    *   put:
    *     summary: Marcar un evento como inactivo
    *     tags: [Eventos]

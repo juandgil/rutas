@@ -11,12 +11,12 @@ export class Gps {
   createdAt: Date;
 
   constructor(data: Partial<Gps>) {
-    this.id = data.id || '';
-    this.equipoId = data.equipoId || '';
-    this.latitud = data.latitud || 0;
-    this.longitud = data.longitud || 0;
-    this.velocidad = data.velocidad || 0;
-    this.timestamp = data.timestamp || new Date();
-    this.createdAt = data.createdAt || new Date();
+    this.id = data.id ?? '';
+    this.equipoId = data.equipoId ?? '';
+    this.latitud = data.latitud ?? 0;
+    this.longitud = data.longitud ?? 0;
+    this.velocidad = data.velocidad ?? 0;
+    this.timestamp = data.timestamp ?? new Date();
+    this.createdAt = data.createdAt ?? new Date();
   }
 } 

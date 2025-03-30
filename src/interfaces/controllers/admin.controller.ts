@@ -11,7 +11,7 @@ import { ApiResponse } from '../dtos/common.dto';
  *   name: Admin
  *   description: Endpoints para administración del sistema
  */
-@controller('/api/admin')
+@controller('/admin')
 export class AdminController {
   constructor(
     @inject(TYPES.IDatabase) private db: IDatabase
@@ -19,7 +19,7 @@ export class AdminController {
 
   /**
    * @swagger
-   * /api/admin/reset-test-data:
+   * /admin/reset-test-data:
    *   post:
    *     summary: Reinicia los datos para pruebas de optimización y replanificación
    *     tags: [Admin]

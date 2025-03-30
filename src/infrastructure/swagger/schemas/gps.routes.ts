@@ -1,6 +1,6 @@
 /**
  * @swagger
- * /api/gps/ubicacion/{equipoId}:
+ * /gps/ubicacion/{equipoId}:
  *   get:
  *     summary: Obtiene la ubicación actual de un equipo
  *     tags: [GPS]
@@ -45,7 +45,7 @@
  *       500:
  *         description: Error del servidor
  * 
- * /api/gps/historico/{equipoId}:
+ * /gps/historico/{equipoId}:
  *   get:
  *     summary: Obtiene el historial de ubicaciones GPS de un equipo
  *     tags: [GPS]
@@ -125,7 +125,7 @@
  *       500:
  *         description: Error del servidor
  * 
- * /api/gps/ubicacion:
+ * /gps/ubicacion:
  *   post:
  *     summary: Registra una nueva ubicación GPS para un equipo
  *     description: Registra la posición actual de un equipo incluyendo latitud, longitud y velocidad

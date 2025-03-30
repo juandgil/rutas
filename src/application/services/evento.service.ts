@@ -109,6 +109,25 @@ export class EventoService implements IEventoService {
 
     return eventoCreado;
   }
+  
+  async obtenerEvento(id: string): Promise<Evento | null> {
+    // Intentar obtener de cache
+    const cachedEvento = await this.cacheService.get<Evento>(`evento:${id}`);
+    
+    if (cachedEvento) {
+      return cachedEvento;
+    }
+
+    // Si no está en cache, obtener de la base de datos
+    const evento = await this.eventoRepository.findById(id);
+    
+    if (evento) {
+      // Guardar en cache
+      await this.cacheService.set(`evento:${id}`, evento, this.CACHE_TTL);
+    }
+    
+    return evento;
+  }
 
   async obtenerEventosActivos(): Promise<Evento[]> {
     // Intentar obtener de cache
@@ -168,6 +187,7 @@ export class EventoService implements IEventoService {
     await this.cacheService.del(`eventos:ciudad:${evento.ciudadId}`);
     await this.cacheService.del(`eventos:equipo:${evento.equipoId}`);
     await this.cacheService.del('eventos:activos');
+    await this.cacheService.del(`evento:${id}`);
     
     // Notificar que el evento se ha marcado como inactivo
     await this.pubSubService.publicar(`${this.TOPIC_EVENTOS}:inactivo`, evento);

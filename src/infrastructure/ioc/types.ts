@@ -16,6 +16,9 @@ const TYPES = {
   IEventoService: Symbol.for('IEventoService'),
   IPubSubService: Symbol.for('IPubSubService'),
   ICacheService: Symbol.for('ICacheService'),
+  
+  // Infrastructure Services
+  Logger: Symbol.for('Logger'),
 
   // External APIs
   IGpsApi: Symbol.for('IGpsApi'),
@@ -24,6 +27,17 @@ const TYPES = {
 
   // Database
   IDatabase: Symbol.for('IDatabase'),
+
+  // Manejadores de mensajes
+  PubSubMessageHandlers: Symbol.for('PubSubMessageHandlers'),
+
+  // Controladores
+  GpsController: Symbol.for('GpsController'),
+  RutasController: Symbol.for('RutasController'),
+  EventosController: Symbol.for('EventosController'),
+  AuthController: Symbol.for('AuthController'),
+  TraficoClimaController: Symbol.for('TraficoClimaController'),
+  AdminController: Symbol.for('AdminController')
 };
 
 export { TYPES }; 

@@ -11,6 +11,7 @@ API para la optimización de rutas de entrega en tiempo real para una empresa de
 - Manejo de eventos asíncronos con Pub/Sub
 - Pruebas unitarias y de integración con Jest
 - Documentación de API con Swagger
+- Resiliencia con Circuit Breaker y estrategias de fallback
 
 ## Requisitos previos
 
@@ -53,6 +54,17 @@ REDIS_PASSWORD=
 # JWT
 JWT_SECRET=tu_secreto_seguro
 JWT_EXPIRES_IN=24h
+
+# Google Cloud
+GOOGLE_CLOUD_PROJECT_ID=tu-proyecto-id
+GOOGLE_APPLICATION_CREDENTIALS=path/to/credentials.json
+
+# Configuración de carga
+HIGH_LOAD_MODE=false  # Establecer en true para procesamiento asíncrono de todas las operaciones
+
+# Circuit Breaker
+CIRCUIT_BREAKER_MAX_FAILURES=5
+CIRCUIT_BREAKER_RESET_TIMEOUT=30000  # milisegundos
 ```
 
 4. Compilar el proyecto:
@@ -78,10 +90,137 @@ npm start
 
 Este proyecto sigue los principios de Clean Architecture:
 
+### Capas de la Arquitectura
+
 - **Domain**: Contiene las entidades y reglas de negocio.
+  - Entidades como Ruta, Evento, Envío
+  - Interfaces de repositorios
+  - Reglas de negocio independientes de frameworks
+
 - **Application**: Contiene los casos de uso de la aplicación.
-- **Infrastructure**: Contiene implementaciones concretas (base de datos, servicios externos).
-- **Interfaces**: Contiene controladores, middlewares y presentadores.
+  - Servicios de aplicación
+  - Coordinación entre entidades
+  - DTOs (Objetos de transferencia de datos)
+  - Interfaces de servicios externos
+
+- **Infrastructure**: Contiene implementaciones concretas.
+  - Implementaciones de repositorios
+  - Servicios de caché
+  - Integraciones con APIs externas
+  - Implementación de PubSub
+  - Configuración de la base de datos
+
+- **Interfaces**: Contiene interfaces de usuario y API.
+  - Controladores REST
+  - Middlewares
+  - Validaciones de entrada
+  - Transformación de datos para presentación
+
+### Principios SOLID
+
+El sistema está diseñado siguiendo los principios SOLID:
+
+1. **Principio de Responsabilidad Única (S)**
+   - Cada clase tiene una única responsabilidad
+   - Ejemplo: El servicio de optimización solo se encarga de calcular rutas, no gestiona eventos
+
+2. **Principio de Abierto/Cerrado (O)**
+   - Las entidades están abiertas para extensión pero cerradas para modificación
+   - Ejemplo: Nuevos tipos de eventos pueden agregarse sin modificar el código existente
+
+3. **Principio de Sustitución de Liskov (L)**
+   - Las clases derivadas pueden sustituir a sus clases base
+   - Ejemplo: Todas las implementaciones de repositorios pueden usarse donde se espera la interfaz base
+
+4. **Principio de Segregación de Interfaces (I)**
+   - Interfaces específicas son mejores que una sola interfaz general
+   - Ejemplo: Separación entre repositorios de diferentes entidades
+
+5. **Principio de Inversión de Dependencias (D)**
+   - Dependencia de abstracciones, no de implementaciones concretas
+   - Ejemplo: Los servicios dependen de interfaces de repositorios, no de implementaciones concretas
+
+### Patrones de Diseño
+
+El sistema implementa varios patrones de diseño:
+
+- **Singleton**: Para servicios compartidos como Cache y PubSub
+- **Repository**: Para abstraer el acceso a datos
+- **Dependency Injection**: Para desacoplar componentes y facilitar pruebas
+- **Circuit Breaker**: Para mejorar la resiliencia en llamadas a servicios externos
+- **Strategy**: Para diferentes algoritmos de optimización de rutas
+- **Observer**: A través del sistema PubSub para notificaciones
+
+## Estrategia de Resiliencia
+
+### Circuit Breaker
+
+- Protege el sistema contra fallos en servicios externos
+- Reduce la carga en servicios que están fallando
+- Proporciona respuestas alternativas cuando un servicio no está disponible
+
+### Procesamiento Asíncrono con PubSub
+
+- Reduce el acoplamiento entre componentes
+- Permite manejo de cargas altas durante picos de tráfico
+- Mejora la tolerancia a fallos y la escalabilidad
+
+### Caché en Múltiples Niveles
+
+- Redis para datos compartidos entre instancias
+- Caché en memoria para datos de acceso muy frecuente
+- Estrategia de fallback a caché cuando los servicios externos fallan
+
+## Estrategia de Escalabilidad en Cloud Run (GCP)
+
+Para un despliegue en producción, se recomienda la siguiente configuración en Google Cloud Platform:
+
+### Cloud Run
+
+- **Autoscaling**: Configurar para escalar automáticamente de 2 a 100 instancias
+- **Memoria**: 2GB mínimo por instancia para cálculos de optimización
+- **CPU**: 1 CPU por instancia, con burst hasta 2 CPUs
+- **Concurrencia**: 80 solicitudes concurrentes por instancia
+- **Timeout**: 5 minutos para operaciones de optimización complejas
+
+### Cloud SQL (PostgreSQL)
+
+- Configuración: 4 CPUs, 16GB RAM, SSD de alto rendimiento
+- Alta disponibilidad con réplica standby
+- Réplicas de lectura para consultas frecuentes
+- Estrategia de particionamiento por fecha para datos históricos
+- Backups automáticos y point-in-time recovery
+
+### Pub/Sub
+
+La implementación actual utiliza Google Cloud Pub/Sub con los siguientes temas:
+
+1. **gps-updates**: Para procesamiento asíncrono de actualizaciones GPS
+   - Alta frecuencia de mensajes
+   - Procesamiento ligero por mensaje
+
+2. **route-optimizations**: Para cálculos de optimización de rutas
+   - Procesamiento intensivo
+   - Resultados retornados vía notificaciones
+
+3. **delivery-events**: Para eventos relacionados con entregas
+   - Notificaciones a sistemas externos
+   - Actualización de estados
+
+4. **traffic-conditions**: Para actualizaciones de condiciones de tráfico
+   - Actualizaciones periódicas
+   - Distribución a múltiples consumidores
+
+5. **weather-alerts**: Para alertas climáticas que afectan operaciones
+   - Baja frecuencia, alta prioridad
+   - Distribución a múltiples sistemas
+
+### Redis (Memorystore)
+
+- Instancia dedicada con 5GB de memoria
+- Habilitación de persistencia
+- Conexión mediante VPC privada
+- Configuración de alta disponibilidad
 
 ## API Endpoints
 
@@ -119,23 +258,6 @@ El sistema utiliza Swagger para proporcionar documentación interactiva de todas
 
 1. Inicia la aplicación con `npm run dev`
 2. Navega a `http://localhost:3000/api-docs` en tu navegador
-
-### Características de la documentación
-
-- Descripción detallada de todos los endpoints
-- Información sobre parámetros requeridos y opcionales
-- Modelos de datos de entrada y salida
-- Ejemplos de solicitudes y respuestas
-- Posibilidad de probar los endpoints directamente desde el navegador
-
-### Grupos de API Documentados
-
-- **Autenticación**: Operaciones de login y manejo de tokens JWT
-- **Rutas**: Optimización y replanificación de rutas de entrega
-- **Eventos**: Gestión de eventos inesperados que afectan las entregas
-- **GPS**: Seguimiento de ubicaciones de equipos de transporte
-- **Tráfico y Clima**: Consulta de condiciones que afectan las entregas
-- **Vehículos**: Información sobre la flota de transporte
 
 ## Flujo de Trabajo Diario
 
@@ -219,22 +341,6 @@ Se marcan como inactivos los eventos resueltos:
 PUT /api/eventos/:id/inactivar
 ```
 
-#### Análisis de Desempeño
-El sistema genera reportes de:
-- Cumplimiento de SLAs
-- Eficiencia de las rutas (distancia, tiempo, combustible)
-- Impacto de eventos en la operación
-- Desempeño de equipos de transporte
-
-### Tecnologías en Acción
-
-Durante todo el flujo operativo:
-
-- **APIs Externas Simuladas**: Proporcionan datos realistas de GPS, tráfico, clima y vehículos
-- **Caché Inteligente**: Optimiza el rendimiento al almacenar datos frecuentemente consultados
-- **Sistema PubSub**: Permite notificaciones en tiempo real a todos los componentes del sistema
-- **Autenticación JWT**: Garantiza un acceso seguro a las funcionalidades según el rol del usuario
-
 ## Pruebas
 
 Para ejecutar las pruebas, asegúrate de que el servidor no esté en ejecución y utiliza el siguiente comando:
@@ -254,9 +360,3 @@ Para ejecutar las pruebas en modo observador (se vuelven a ejecutar cuando cambi
 ```bash
 npm run test:watch
 ```
-
-### Notas sobre las pruebas
-
-Las pruebas utilizan mocks para simular las dependencias externas como bases de datos y APIs. Para añadir nuevos mocks, edita el archivo `src/tests/test-setup.ts`.
-
-El archivo `src/index.ts` ha sido modificado para no iniciar el servidor automáticamente cuando se importa en las pruebas, lo que facilita las pruebas con Supertest.

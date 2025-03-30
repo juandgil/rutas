@@ -47,8 +47,8 @@ export abstract class BaseRepository<T, ID> implements IBaseRepository<T, ID> {
     @unmanaged() tableName?: string,
     @unmanaged() pkColumn?: string
   ) {
-    this.tableName = tableName || '';
-    this.pkColumn = pkColumn || 'id';
+    this.tableName = tableName ?? '';
+    this.pkColumn = pkColumn ?? 'id';
   }
 
   async findById(id: ID): Promise<T | null> {

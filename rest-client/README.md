@@ -38,7 +38,7 @@ El sistema utiliza las siguientes convenciones para los identificadores:
 - **Equipos**: `equipo-001`, `equipo-002`, etc.
 - **Eventos**: `evento-123`, `evento-456`, etc.
 - **Ciudades**: `ciudad-001`, `ciudad-002`, etc.
-- **Vehículos**: `veh-001`, `veh-002`, etc. (histórico, serán actualizado próximamente a `vehiculo-001`)
+- **Vehículos**: `veh-001`, `veh-002`, etc. (histórico, serán actualizado próximamente a `veh-001`)
 - **Envíos**: `envio-001`, `envio-002`, etc.
 - **SLAs**: `sla-001`, `sla-002`, etc.
 

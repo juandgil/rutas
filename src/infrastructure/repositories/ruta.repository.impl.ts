@@ -38,6 +38,11 @@ export class RutaRepository extends BaseRepository<Ruta, string> implements IRut
       throw error;
     }
   }
+  
+  // Alias para mantener compatibilidad con nombres en inglés
+  async findByEquipoAndDate(equipoId: string, fecha: Date): Promise<Ruta | null> {
+    return this.findByEquipoYFecha(equipoId, fecha);
+  }
 
   async findByEstado(estado: EstadoRuta): Promise<Ruta[]> {
     try {

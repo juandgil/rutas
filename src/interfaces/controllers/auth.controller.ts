@@ -11,7 +11,7 @@ import { LoginRequestDto, LoginResponseDto } from '../../application/dtos/auth.d
  *   name: Auth
  *   description: Endpoints para autenticación de usuarios, gestión de tokens JWT y control de acceso al sistema
  */
-@controller('/api/auth')
+@controller('/auth')
 export class AuthController {
   constructor(
     @inject(TYPES.IAuthService) private authService: IAuthService
@@ -19,50 +19,23 @@ export class AuthController {
 
   /**
    * @swagger
-   * /api/auth/login:
+   * /auth/login:
    *   post:
    *     summary: Autenticar usuario y obtener token
-   *     tags: [Autenticación]
+   *     tags: [Auth]
    *     requestBody:
    *       required: true
    *       content:
    *         application/json:
    *           schema:
-   *             type: object
-   *             required:
-   *               - username
-   *               - password
-   *             properties:
-   *               username:
-   *                 type: string
-   *                 description: Nombre de usuario
-   *               password:
-   *                 type: string
-   *                 format: password
-   *                 description: Contraseña del usuario
-   *           example:
-   *             username: "admin"
-   *             password: "admin123"
+   *             $ref: '#/components/schemas/LoginRequest'
    *     responses:
    *       200:
    *         description: Login exitoso
    *         content:
    *           application/json:
    *             schema:
-   *               type: object
-   *               properties:
-   *                 token:
-   *                   type: string
-   *                   description: JWT token
-   *                 user:
-   *                   type: object
-   *                   properties:
-   *                     id:
-   *                       type: string
-   *                     username:
-   *                       type: string
-   *                     role:
-   *                       type: string
+   *               $ref: '#/components/schemas/LoginResponse'
    *       400:
    *         description: Datos inválidos
    *       401:

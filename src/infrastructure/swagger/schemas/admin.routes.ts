@@ -1,6 +1,6 @@
 /**
  * @swagger
- * /api/admin/reset-test-data:
+ * /admin/reset-test-data:
  *   post:
  *     summary: Reinicia los datos para pruebas de optimización y replanificación
  *     tags: [Admin]

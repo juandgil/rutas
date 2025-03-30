@@ -21,23 +21,23 @@ export class Envio {
   updatedAt: Date;
 
   constructor(data: Partial<Envio>) {
-    this.id = data.id || '';
-    this.guia = data.guia || '';
-    this.direccionOrigen = data.direccionOrigen || '';
-    this.direccionDestino = data.direccionDestino || '';
-    this.latitudDestino = data.latitudDestino || 0;
-    this.longitudDestino = data.longitudDestino || 0;
-    this.ciudadId = data.ciudadId || '';
-    this.peso = data.peso || 0;
-    this.volumen = data.volumen || 0;
-    this.estado = data.estado || EstadoEnvio.PENDIENTE;
-    this.slaId = data.slaId || '';
-    this.equipoId = data.equipoId || null;
-    this.ordenEntrega = data.ordenEntrega || null;
-    this.fechaEntregaEstimada = data.fechaEntregaEstimada || null;
-    this.fechaEntregaReal = data.fechaEntregaReal || null;
-    this.createdAt = data.createdAt || new Date();
-    this.updatedAt = data.updatedAt || new Date();
+    this.id = data.id ?? '';
+    this.guia = data.guia ?? '';
+    this.direccionOrigen = data.direccionOrigen ?? '';
+    this.direccionDestino = data.direccionDestino ?? '';
+    this.latitudDestino = data.latitudDestino ?? 0;
+    this.longitudDestino = data.longitudDestino ?? 0;
+    this.ciudadId = data.ciudadId ?? '';
+    this.peso = data.peso ?? 0;
+    this.volumen = data.volumen ?? 0;
+    this.estado = data.estado ?? EstadoEnvio.PENDIENTE;
+    this.slaId = data.slaId ?? '';
+    this.equipoId = data.equipoId ?? null;
+    this.ordenEntrega = data.ordenEntrega ?? null;
+    this.fechaEntregaEstimada = data.fechaEntregaEstimada ?? null;
+    this.fechaEntregaReal = data.fechaEntregaReal ?? null;
+    this.createdAt = data.createdAt ?? new Date();
+    this.updatedAt = data.updatedAt ?? new Date();
   }
 }
 

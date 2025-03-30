@@ -310,4 +310,12 @@ DO UPDATE SET
     latitud = EXCLUDED.latitud, 
     longitud = EXCLUDED.longitud, 
     velocidad = EXCLUDED.velocidad, 
-    timestamp = EXCLUDED.timestamp; 
+    timestamp = EXCLUDED.timestamp;
+
+-- -- Eventos de prueba
+-- INSERT INTO eventos (id, equipo_id, tipo, descripcion, latitud, longitud, ciudad_id, impacto, fecha, activo)
+-- VALUES 
+--   ('evento-123', 'equipo-001', 'TRAFICO', 'Cierre vial por manifestación', 4.6782, -74.0582, 'ciudad-001', 'ALTO', NOW(), true),
+--   ('evento-456', 'equipo-002', 'CLIMA', 'Inundación en sector norte', 4.6912, -74.0653, 'ciudad-001', 'MEDIO', NOW(), true),
+--   ('evento-789', 'equipo-003', 'VEHICULO', 'Falla mecánica', 4.7023, -74.0432, 'ciudad-002', 'BAJO', NOW(), true)
+-- ON CONFLICT (id) DO NOTHING; 

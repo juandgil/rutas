@@ -1,4 +1,4 @@
-import { controller, httpGet, request, response } from 'inversify-express-utils';
+import { controller, httpGet, request, response, requestParam } from 'inversify-express-utils';
 import { inject } from 'inversify';
 import { Request, Response } from 'express';
 import { TYPES } from '../../infrastructure/ioc/types';
@@ -9,9 +9,9 @@ import { ApiResponse } from '../dtos/common.dto';
  * @swagger
  * tags:
  *   name: Vehiculos
- *   description: Endpoints para gestión de la flota de vehículos
+ *   description: Endpoints para gestión de vehículos
  */
-@controller('/api/vehiculos')
+@controller('/vehiculos')
 export class VehiculosController {
   constructor(
     @inject(TYPES.IVehiculoRepository) private vehiculoRepository: IVehiculoRepository
@@ -19,10 +19,12 @@ export class VehiculosController {
 
   /**
    * @swagger
-   * /api/vehiculos/{id}:
+   * /vehiculos/{id}:
    *   get:
    *     summary: Obtiene información detallada de un vehículo
    *     tags: [Vehiculos]
+   *     security:
+   *       - bearerAuth: []
    *     parameters:
    *       - in: path
    *         name: id
@@ -30,21 +32,12 @@ export class VehiculosController {
    *         schema:
    *           type: string
    *         description: ID del vehículo
+   *         example: "veh-001"
    *     responses:
    *       200:
-   *         description: Información del vehículo o mensaje informativo
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 success:
-   *                   type: boolean
-   *                 message:
-   *                   type: string
-   *                 data:
-   *                   type: object
-   *                   nullable: true
+   *         description: Información del vehículo
+   *       404:
+   *         description: Vehículo no encontrado
    *       500:
    *         description: Error del servidor
    */
@@ -88,10 +81,12 @@ export class VehiculosController {
 
   /**
    * @swagger
-   * /api/vehiculos:
+   * /vehiculos:
    *   get:
    *     summary: Obtiene lista de vehículos
    *     tags: [Vehiculos]
+   *     security:
+   *       - bearerAuth: []
    *     responses:
    *       200:
    *         description: Lista de vehículos

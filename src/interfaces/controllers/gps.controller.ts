@@ -1,4 +1,4 @@
-import { controller, httpGet, httpPost, request, response } from 'inversify-express-utils';
+import { controller, httpGet, httpPost, request, response, requestParam } from 'inversify-express-utils';
 import { inject } from 'inversify';
 import { Request, Response } from 'express';
 import { TYPES } from '../../infrastructure/ioc/types';
@@ -8,6 +8,7 @@ import { IGpsRepository } from '../../domain/repositories/gps.repository';
 import { IEquipoRepository } from '../../domain/repositories/equipo.repository';
 import { Gps } from '../../domain/entities/gps.entity';
 import { v4 as uuidv4 } from 'uuid';
+import { IPubSubService } from '../../application/interfaces/pubsub-service.interface';
 
 /**
  * @swagger
@@ -15,16 +16,17 @@ import { v4 as uuidv4 } from 'uuid';
  *   name: GPS
  *   description: Endpoints para gestión y monitoreo de ubicaciones GPS de los equipos
  */
-@controller('/api/gps')
+@controller('/gps')
 export class GpsController {
   constructor(
     @inject(TYPES.IGpsRepository) private gpsRepository: IGpsRepository,
-    @inject(TYPES.IEquipoRepository) private equipoRepository: IEquipoRepository
+    @inject(TYPES.IEquipoRepository) private equipoRepository: IEquipoRepository,
+    @inject(TYPES.IPubSubService) private pubSubService: IPubSubService
   ) {}
 
   /**
    * @swagger
-   * /api/gps/ubicacion/{equipoId}:
+   * /gps/ubicacion/{equipoId}:
    *   get:
    *     summary: Obtiene la ubicación actual de un equipo
    *     tags: [GPS]
@@ -108,7 +110,7 @@ export class GpsController {
 
   /**
    * @swagger
-   * /api/gps/historico/{equipoId}:
+   * /gps/historico/{equipoId}:
    *   get:
    *     summary: Obtiene el historial de ubicaciones GPS de un equipo
    *     tags: [GPS]
@@ -213,10 +215,9 @@ export class GpsController {
 
   /**
    * @swagger
-   * /api/gps/ubicacion:
+   * /gps/ubicacion:
    *   post:
    *     summary: Registra una nueva ubicación GPS para un equipo
-   *     description: Registra la posición actual de un equipo incluyendo latitud, longitud y velocidad
    *     tags: [GPS]
    *     security:
    *       - bearerAuth: []
@@ -225,86 +226,91 @@ export class GpsController {
    *       content:
    *         application/json:
    *           schema:
-   *             type: object
-   *             required:
-   *               - equipoId
-   *               - latitud
-   *               - longitud
-   *               - velocidad
-   *             properties:
-   *               equipoId:
-   *                 type: string
-   *                 description: ID del equipo
-   *               latitud:
-   *                 type: number
-   *                 format: float
-   *                 description: Latitud en grados decimales
-   *               longitud:
-   *                 type: number
-   *                 format: float
-   *                 description: Longitud en grados decimales
-   *               velocidad:
-   *                 type: number
-   *                 format: float
-   *                 description: Velocidad en km/h
-   *           example:
-   *             equipoId: "equipo-001"
-   *             latitud: 4.624335
-   *             longitud: -74.063644
-   *             velocidad: 35.5
+   *             $ref: '#/components/schemas/GpsUbicacion'
    *     responses:
    *       201:
-   *         description: Ubicación GPS registrada exitosamente
+   *         description: Ubicación registrada exitosamente
    *         content:
    *           application/json:
    *             schema:
    *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 message:
+   *                   type: string
+   *                 data:
+   *                   $ref: '#/components/schemas/GpsUbicacion'
+   *       202:
+   *         description: Ubicación en procesamiento (modo asíncrono)
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 message:
+   *                   type: string
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     id:
+   *                       type: string
    *       400:
-   *         description: Datos inválidos o incompletos
+   *         description: Datos inválidos
    *       404:
    *         description: Equipo no encontrado
    *       500:
-   *         description: Error interno del servidor
+   *         description: Error al registrar ubicación
    */
   @httpPost('/ubicacion')
   async registrarUbicacion(@request() req: Request, @response() res: Response): Promise<Response> {
     try {
-      const { equipoId, latitud, longitud, velocidad } = req.body;
-      
-      // Validar datos recibidos
-      if (!equipoId || !this.esNumero(latitud) || !this.esNumero(longitud) || !this.esNumero(velocidad)) {
-        return res.status(400).json(
-          new ApiResponse(false, 'Datos de ubicación inválidos', null)
-        );
+      const { equipoId, latitud, longitud, velocidad, timestamp } = req.body;
+
+      // Verificar datos requeridos
+      if (!equipoId || !latitud || !longitud) {
+        return res.status(400).json({
+          success: false,
+          message: 'Datos incompletos',
+          details: 'Se requiere equipoId, latitud y longitud'
+        });
       }
-      
-      // Verificar que el equipo existe
-      const equipo = await this.equipoRepository.findById(equipoId);
-      if (!equipo) {
-        return res.status(404).json(
-          new ApiResponse(false, 'Equipo no encontrado', null)
-        );
-      }
-      
-      // Registrar la ubicación
-      const ubicacion = await this.gpsRepository.create({
+
+      // Crear objeto GPS
+      const ubicacion: Gps = {
         id: uuidv4(),
         equipoId,
-        latitud,
-        longitud,
-        velocidad,
-        timestamp: new Date(),
+        latitud: parseFloat(latitud),
+        longitud: parseFloat(longitud),
+        velocidad: velocidad ? parseFloat(velocidad) : 0,
+        timestamp: timestamp ? new Date(timestamp) : new Date(),
         createdAt: new Date()
+      };
+
+      // Procesar de forma asíncrona usando PubSub
+      console.log(`Publicando ubicación GPS para equipo ${equipoId} en PubSub`);
+      await this.pubSubService.publicar('gps-updates', ubicacion);
+
+      // Responder inmediatamente
+      return res.status(202).json({
+        success: true,
+        message: 'Ubicación GPS registrada para procesamiento asíncrono',
+        data: {
+          equipoId,
+          latitud: ubicacion.latitud,
+          longitud: ubicacion.longitud,
+          procesadaAsincrona: true
+        }
       });
-      
-      return res.status(201).json(
-        new ApiResponse(true, 'Ubicación GPS registrada correctamente', ubicacion)
-      );
     } catch (error) {
       console.error('Error al registrar ubicación GPS:', error);
-      return res.status(500).json(
-        new ApiResponse(false, 'Error al registrar la ubicación GPS', null)
-      );
+      return res.status(500).json({
+        success: false,
+        message: 'Error al registrar ubicación GPS',
+        error: (error as Error).message
+      });
     }
   }
 

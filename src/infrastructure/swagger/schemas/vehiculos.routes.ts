@@ -1,6 +1,6 @@
 /**
  * @swagger
- * /api/vehiculos/{id}:
+ * /vehiculos/{id}:
  *   get:
  *     summary: Obtiene información detallada de un vehículo
  *     tags: [Vehiculos]
@@ -13,7 +13,7 @@
  *         schema:
  *           type: string
  *         description: ID del vehículo
- *         example: "vehiculo-001"
+ *         example: "veh-001"
  *     responses:
  *       200:
  *         description: Información del vehículo o mensaje informativo
@@ -34,7 +34,7 @@
  *                   success: true
  *                   message: "Vehículo encontrado"
  *                   data:
- *                     id: "vehiculo-001"
+ *                     id: "veh-001"
  *                     placa: "ABC123"
  *                     modelo: "Furgón 2023"
  *                     tipo: "FURGONETA"
@@ -66,7 +66,7 @@
  *             example:
  *               error: "Error interno del servidor"
  * 
- * /api/vehiculos:
+ * /vehiculos:
  *   get:
  *     summary: Obtiene lista de vehículos
  *     tags: [Vehiculos]
@@ -92,7 +92,7 @@
  *               success: true
  *               message: "Lista de vehículos"
  *               data:
- *                 - id: "vehiculo-001"
+ *                 - id: "veh-001"
  *                   placa: "ABC123"
  *                   modelo: "Furgón 2023"
  *                   tipo: "FURGONETA"

@@ -13,15 +13,15 @@ export class Vehiculo {
   updatedAt: Date;
 
   constructor(data: Partial<Vehiculo>) {
-    this.id = data.id || '';
-    this.placa = data.placa || '';
-    this.modelo = data.modelo || '';
-    this.tipo = data.tipo || TipoVehiculo.CAMIONETA;
-    this.capacidadPeso = data.capacidadPeso || 0;
-    this.capacidadVolumen = data.capacidadVolumen || 0;
-    this.disponible = data.disponible !== undefined ? data.disponible : true;
-    this.createdAt = data.createdAt || new Date();
-    this.updatedAt = data.updatedAt || new Date();
+    this.id = data.id ?? '';
+    this.placa = data.placa ?? '';
+    this.modelo = data.modelo ?? '';
+    this.tipo = data.tipo ?? TipoVehiculo.CAMIONETA;
+    this.capacidadPeso = data.capacidadPeso ?? 0;
+    this.capacidadVolumen = data.capacidadVolumen ?? 0;
+    this.disponible = data.disponible ?? true;
+    this.createdAt = data.createdAt ?? new Date();
+    this.updatedAt = data.updatedAt ?? new Date();
   }
 }
 

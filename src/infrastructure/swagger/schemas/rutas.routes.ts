@@ -1,6 +1,6 @@
 /**
  * @swagger
- * /api/rutas/optimizar/{equipoId}:
+ * /rutas/optimizar/{equipoId}:
  *   get:
  *     summary: Calcular la ruta óptima para un equipo
  *     tags: [Rutas]
@@ -111,7 +111,7 @@
  *             example:
  *               error: "Error interno del servidor"
  * 
- * /api/rutas/replanificar/{equipoId}:
+ * /rutas/replanificar/{equipoId}:
  *   put:
  *     summary: Replanificar la ruta de un equipo debido a un evento inesperado
  *     tags: [Rutas]

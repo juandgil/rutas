@@ -6,7 +6,7 @@ export class OptimizarRutaRequestDto {
   fecha?: Date;
 
   constructor(data: Partial<OptimizarRutaRequestDto>) {
-    this.equipoId = data.equipoId || '';
+    this.equipoId = data.equipoId ?? '';
     this.fecha = data.fecha || new Date();
   }
 
@@ -21,8 +21,8 @@ export class ReplanificarRutaRequestDto {
   eventoId: string;
 
   constructor(data: Partial<ReplanificarRutaRequestDto>) {
-    this.equipoId = data.equipoId || '';
-    this.eventoId = data.eventoId || '';
+    this.equipoId = data.equipoId ?? '';
+    this.eventoId = data.eventoId ?? '';
   }
 
   static validationSchema = yup.object().shape({
@@ -43,15 +43,15 @@ export class RutaResponseDto {
   ultimoEventoId: string | null;
 
   constructor(data: Partial<RutaResponseDto>) {
-    this.id = data.id || '';
-    this.equipoId = data.equipoId || '';
+    this.id = data.id ?? '';
+    this.equipoId = data.equipoId ?? '';
     this.fecha = data.fecha || new Date();
-    this.envios = data.envios || [];
-    this.estado = data.estado || EstadoRuta.PLANIFICADA;
-    this.distanciaTotal = data.distanciaTotal || 0;
-    this.tiempoEstimado = data.tiempoEstimado || 0;
+    this.envios = data.envios ?? [];
+    this.estado = data.estado ?? EstadoRuta.PLANIFICADA;
+    this.distanciaTotal = data.distanciaTotal ?? 0;
+    this.tiempoEstimado = data.tiempoEstimado ?? 0;
     this.replanificada = data.replanificada !== undefined ? data.replanificada : false;
-    this.ultimoEventoId = data.ultimoEventoId || null;
+    this.ultimoEventoId = data.ultimoEventoId ?? null;
   }
 }
 
@@ -66,13 +66,13 @@ export class EnvioRutaDto {
   prioridadSla: number;
 
   constructor(data: Partial<EnvioRutaDto>) {
-    this.id = data.id || '';
-    this.guia = data.guia || '';
-    this.direccionDestino = data.direccionDestino || '';
-    this.latitudDestino = data.latitudDestino || 0;
-    this.longitudDestino = data.longitudDestino || 0;
-    this.ordenEntrega = data.ordenEntrega || 0;
-    this.slaId = data.slaId || '';
-    this.prioridadSla = data.prioridadSla || 5;
+    this.id = data.id ?? '';
+    this.guia = data.guia ?? '';
+    this.direccionDestino = data.direccionDestino ?? '';
+    this.latitudDestino = data.latitudDestino ?? 0;
+    this.longitudDestino = data.longitudDestino ?? 0;
+    this.ordenEntrega = data.ordenEntrega ?? 0;
+    this.slaId = data.slaId ?? '';
+    this.prioridadSla = data.prioridadSla ?? 5;
   }
 } 

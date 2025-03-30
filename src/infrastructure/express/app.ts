@@ -6,67 +6,94 @@ import { container } from '../ioc/container';
 import { env } from '../config/env';
 import { authMiddlewareExpress } from '../../interfaces/middleware/auth-middleware';
 import { setupSwagger } from '../swagger';
+import { PubSubMessageHandlers } from '../pubsub/message-handlers';
+import { Application } from 'express';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import { errorMiddleware } from './middleware/error.middleware';
+import { authMiddleware } from './middleware/auth.middleware';
+import { TYPES } from '../ioc/types';
+import { IPubSubService } from '../../application/interfaces/pubsub-service.interface';
 
 // Importar todos los controladores
 import '../../interfaces/controllers';
+import '../../interfaces/controllers/auth.controller';
+import '../../interfaces/controllers/rutas.controller';
 
-export const createApp = () => {
-  // Crear servidor Express con Inversify
-  const server = new InversifyExpressServer(container);
+export class App {
+  private app: Application;
+  private inversifyServer: InversifyExpressServer;
 
-  server.setConfig((app) => {
-    // Middlewares básicos
-    app.use(cors());
-    app.use(express.json());
-    app.use(express.urlencoded({ extended: true }));
-
-    // Configurar Swagger
-    setupSwagger(app);
-
-    // Aplicar middleware de autenticación a todas las rutas excepto /api/auth/login
-    app.use((req, res, next) => {
-      // Rutas públicas que no requieren autenticación
-      const publicRoutes = [
-        '/api/auth/login',
-        '/api-docs',
-        '/swagger',
-        '/swagger-ui'
-      ];
-
-      // Verificar si la ruta actual está en la lista de rutas públicas
-      const isPublicRoute = publicRoutes.some(route => 
-        req.path === route || 
-        req.path.startsWith('/api-docs/') || 
-        req.path.startsWith('/swagger-ui/')
-      );
-
-      if (isPublicRoute) {
-        return next();
-      }
-
-      // Aplicar middleware de autenticación para rutas protegidas
-      authMiddlewareExpress()(req, res, next);
+  constructor() {
+    this.inversifyServer = new InversifyExpressServer(container, null, {
+      rootPath: '/api'
     });
-  });
 
-  server.setErrorConfig((app) => {
-    // Middleware para manejo de errores
-    app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-      console.error('Error en la aplicación:', err);
-      res.status(500).json({
-        success: false,
-        message: err.message || 'Error interno del servidor',
-        data: null
+    this.inversifyServer.setConfig((app) => {
+      // Configuración básica
+      app.use(cors());
+      app.use(helmet());
+      app.use(express.json());
+      app.use(express.urlencoded({ extended: true }));
+      app.use(morgan('dev'));
+
+      // Configuración de Swagger
+      setupSwagger(app);
+
+      // Middleware de autenticación (excepto rutas públicas)
+      app.use((req, res, next) => {
+        // Rutas públicas que no requieren autenticación
+        const publicRoutes = [
+          '/api/auth/login',
+          '/api-docs',
+          '/swagger.json'
+        ];
+
+        const isPublicRoute = publicRoutes.some(route => 
+          req.path.startsWith(route) || req.path === '/'
+        );
+
+        if (isPublicRoute) {
+          return next();
+        }
+
+        // Aplicar middleware de autenticación para rutas protegidas
+        return authMiddleware(req, res, next);
       });
     });
-  });
 
-  // Construir la aplicación
-  const app = server.build();
+    this.inversifyServer.setErrorConfig((app) => {
+      // Middleware de manejo de errores global
+      app.use(errorMiddleware);
+    });
 
-  // Configurar el puerto
-  const port = env.PORT;
-  app.set('port', port);
+    this.app = this.inversifyServer.build();
+  }
 
-  return app;
-}; 
+  public async inicializar(): Promise<void> {
+    try {
+      // Inicializar servicio PubSub
+      const pubSubService = container.get<IPubSubService>(TYPES.IPubSubService);
+      await pubSubService.inicializar();
+      console.log('Servicio PubSub inicializado correctamente');
+      
+      // Inicializar los handlers de PubSub (esto automáticamente crea las suscripciones)
+      await container.get<PubSubMessageHandlers>(TYPES.PubSubMessageHandlers);
+      console.log('Manejadores de mensajes PubSub inicializados correctamente');
+    } catch (error: any) {
+      console.error('Error al inicializar servicios asíncronos:', error);
+    }
+  }
+
+  public escuchar(port: number, callback?: () => void): void {
+    this.app.listen(port, () => {
+      console.log(`Servidor iniciado en el puerto ${port}`);
+      console.log(`Documentación de la API disponible en http://localhost:${port}/api-docs`);
+      if (callback) callback();
+    });
+  }
+
+  public getApp(): Application {
+    return this.app;
+  }
+} 

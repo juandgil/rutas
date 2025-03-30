@@ -15,17 +15,17 @@ export class Ruta {
   updatedAt: Date;
 
   constructor(data: Partial<Ruta>) {
-    this.id = data.id || '';
-    this.equipoId = data.equipoId || '';
-    this.fecha = data.fecha || new Date();
-    this.envios = data.envios || [];
-    this.estado = data.estado || EstadoRuta.PLANIFICADA;
-    this.distanciaTotal = data.distanciaTotal || 0;
-    this.tiempoEstimado = data.tiempoEstimado || 0;
-    this.replanificada = data.replanificada !== undefined ? data.replanificada : false;
-    this.ultimoEventoId = data.ultimoEventoId || null;
-    this.createdAt = data.createdAt || new Date();
-    this.updatedAt = data.updatedAt || new Date();
+    this.id = data.id ?? '';
+    this.equipoId = data.equipoId ?? '';
+    this.fecha = data.fecha ?? new Date();
+    this.envios = data.envios ?? [];
+    this.estado = data.estado ?? EstadoRuta.PLANIFICADA;
+    this.distanciaTotal = data.distanciaTotal ?? 0;
+    this.tiempoEstimado = data.tiempoEstimado ?? 0;
+    this.replanificada = data.replanificada ?? false;
+    this.ultimoEventoId = data.ultimoEventoId ?? null;
+    this.createdAt = data.createdAt ?? new Date();
+    this.updatedAt = data.updatedAt ?? new Date();
   }
 }
 

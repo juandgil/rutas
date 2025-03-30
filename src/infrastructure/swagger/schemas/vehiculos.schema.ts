@@ -33,7 +33,7 @@
  *           format: date
  *           description: Fecha de adquisición del vehículo
  *       example:
- *         id: "vehiculo-001"
+ *         id: "veh-001"
  *         placa: "ABC123"
  *         modelo: "Furgón 2023"
  *         tipo: "FURGONETA"
@@ -79,7 +79,7 @@
  *               format: date-time
  *               description: Fecha del último mantenimiento
  *       example:
- *         id: "vehiculo-001"
+ *         id: "veh-001"
  *         placa: "ABC123"
  *         modelo: "Furgón 2023"
  *         tipo: "FURGONETA"

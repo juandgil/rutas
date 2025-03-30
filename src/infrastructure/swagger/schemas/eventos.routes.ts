@@ -1,6 +1,6 @@
 /**
  * @swagger
- * /api/eventos:
+ * /eventos:
  *   post:
  *     summary: Registrar un nuevo evento inesperado
  *     tags: [Eventos]
@@ -64,7 +64,7 @@
  *             example:
  *               error: "Error interno del servidor"
  * 
- * /api/eventos/activos:
+ * /eventos/activos:
  *   get:
  *     summary: Obtener todos los eventos activos
  *     tags: [Eventos]
@@ -117,7 +117,7 @@
  *             example:
  *               error: "Error interno del servidor"
  * 
- * /api/eventos/ciudad/{ciudadId}:
+ * /eventos/ciudad/{ciudadId}:
  *   get:
  *     summary: Obtener eventos de una ciudad específica
  *     tags: [Eventos]
@@ -178,7 +178,7 @@
  *             example:
  *               error: "Error interno del servidor"
  * 
- * /api/eventos/equipo/{equipoId}:
+ * /eventos/equipo/{equipoId}:
  *   get:
  *     summary: Obtener eventos asociados a un equipo
  *     tags: [Eventos]
@@ -239,7 +239,7 @@
  *             example:
  *               error: "Error interno del servidor"
  * 
- * /api/eventos/{id}/inactivar:
+ * /eventos/{id}/inactivar:
  *   put:
  *     summary: Marcar un evento como inactivo
  *     tags: [Eventos]

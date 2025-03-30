@@ -1,6 +1,6 @@
 /**
  * @swagger
- * /api/trafico-clima/trafico/{ciudadId}:
+ * /trafico-clima/trafico/{ciudadId}:
  *   get:
  *     summary: Obtiene condiciones de tráfico para una ciudad
  *     tags: [APIs Externas]
@@ -44,7 +44,7 @@
  *       500:
  *         description: Error del servidor
  * 
- * /api/trafico-clima/clima/{ciudadId}:
+ * /trafico-clima/clima/{ciudadId}:
  *   get:
  *     summary: Obtiene condiciones climáticas para una ciudad
  *     tags: [APIs Externas]
@@ -92,7 +92,7 @@
  *       500:
  *         description: Error del servidor
  * 
- * /api/trafico-clima/impacto:
+ * /trafico-clima/impacto:
  *   post:
  *     summary: Obtiene impacto de las condiciones de tráfico y clima en una ruta
  *     tags: [APIs Externas]

@@ -9,8 +9,18 @@ import { v4 as uuidv4 } from 'uuid';
 @injectable()
 export class InMemoryPubSubService implements IPubSubService {
   private subscriptions: Map<string, Map<string, (mensaje: any) => void>> = new Map();
+  private initialized = false;
+
+  async inicializar(): Promise<void> {
+    if (this.initialized) return;
+    
+    console.log('Inicializando servicio PubSub en memoria');
+    this.initialized = true;
+  }
 
   async publicar<T>(topic: string, mensaje: T): Promise<void> {
+    if (!this.initialized) await this.inicializar();
+    
     console.log(`Publicando mensaje en el topic: ${topic}`, mensaje);
     
     const topicSubscriptions = this.subscriptions.get(topic);
@@ -28,6 +38,8 @@ export class InMemoryPubSubService implements IPubSubService {
   }
 
   async suscribir<T>(topic: string, callback: (mensaje: T) => void): Promise<string> {
+    if (!this.initialized) await this.inicializar();
+    
     const subscriptionId = uuidv4();
     
     if (!this.subscriptions.has(topic)) {
@@ -43,6 +55,8 @@ export class InMemoryPubSubService implements IPubSubService {
   }
 
   async cancelarSuscripcion(subscriptionId: string): Promise<void> {
+    if (!this.initialized) await this.inicializar();
+    
     for (const [topic, subscriptions] of this.subscriptions.entries()) {
       if (subscriptions.has(subscriptionId)) {
         subscriptions.delete(subscriptionId);
