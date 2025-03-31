@@ -113,10 +113,15 @@ export class RutasController {
       } else {
         fechaObj = new Date();
       }
+      
+      // Normalizar la fecha para eliminar la hora/minutos/segundos
+      fechaObj.setHours(0, 0, 0, 0);
+      console.log(`[RutasController] Fecha normalizada: ${fechaObj.toISOString()}`);
 
       // Verificar si ya existe una ruta para esta fecha
       const rutaExistente = await this.rutaRepository.findByEquipoAndDate(equipoId, fechaObj);
       if (rutaExistente) {
+        console.log(`[RutasController] Ruta existente encontrada: ${rutaExistente.id}`);
         return res.status(200).json(
           new ApiResponse(true, 'Ya existe una ruta para este equipo y fecha', rutaExistente)
         );
@@ -449,10 +454,15 @@ export class RutasController {
         fechaObj = new Date();
       }
       
+      // Normalizar la fecha para eliminar la hora/minutos/segundos
+      fechaObj.setHours(0, 0, 0, 0);
+      console.log(`[RutasController] Fecha normalizada para optimización masiva: ${fechaObj.toISOString()}`);
+      
       // Ejecutar optimización masiva
       console.log(`Iniciando optimización masiva para ciudad ${ciudadId}, fecha: ${fechaObj.toISOString().split('T')[0]}`);
       
       const resultado = await this.optimizacionService.optimizarRutasMasivas(ciudadId, fechaObj);
+      console.log(`Optimización masiva completada. Rutas creadas: ${resultado.rutasCreadas.length}, Envíos asignados: ${resultado.enviosAsignados}`);
       
       if (resultado.rutasCreadas.length === 0) {
         return res.status(200).json(

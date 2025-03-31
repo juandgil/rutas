@@ -100,9 +100,15 @@ export class OptimizacionService implements IOptimizacionService {
    */
   async optimizarRuta(equipoId: string, fecha: Date): Promise<Ruta> {
     // Verificar si ya existe una ruta para este equipo y fecha
-    const rutaExistente = await this.rutaRepository.findByEquipoYFecha(equipoId, fecha);
+    // Primero, normalizar la fecha sin tiempo para hacer una comparación adecuada
+    const fechaNormalizada = new Date(fecha);
+    fechaNormalizada.setHours(0, 0, 0, 0);
+    
+    console.log(`Verificando rutas existentes para equipo ${equipoId} y fecha ${fechaNormalizada.toISOString()}`);
+    const rutaExistente = await this.rutaRepository.findByEquipoYFecha(equipoId, fechaNormalizada);
     
     if (rutaExistente) {
+      console.log(`Ruta existente encontrada: ${rutaExistente.id}`);
       throw new Error('Ya existe una ruta optimizada para este equipo en la fecha especificada');
     }
 
@@ -136,9 +142,11 @@ export class OptimizacionService implements IOptimizacionService {
 
     // Obtener capacidad actualizada del vehículo desde la API externa
     const capacidadVehiculo = await this.vehiculoApi.obtenerCapacidad(vehiculo.id);
+    console.log(`Capacidad del vehículo ${vehiculo.id}:`, capacidadVehiculo);
     
     // Obtener los envíos pendientes para la ciudad del equipo
     const enviosPendientes = await this.envioRepository.findByCiudad(equipo.ciudadId);
+    console.log(`Encontrados ${enviosPendientes.length} envíos pendientes en la ciudad ${equipo.ciudadId}`);
     
     // Filtrar los envíos que:
     // 1. Estén pendientes (no asignados a otro equipo)
@@ -150,6 +158,8 @@ export class OptimizacionService implements IOptimizacionService {
       e.peso <= capacidadVehiculo.pesoMaximo && 
       e.volumen <= capacidadVehiculo.volumenMaximo
     );
+    
+    console.log(`Después de filtrar, quedan ${enviosFiltrados.length} envíos disponibles para optimizar`);
 
     if (enviosFiltrados.length === 0) {
       throw new Error('No hay envíos pendientes que cumplan los requisitos para optimizar');
@@ -163,6 +173,8 @@ export class OptimizacionService implements IOptimizacionService {
       equipo
     );
     
+    console.log(`Optimización completada. Envíos seleccionados: ${resultado.enviosOrdenados.length}`);
+    
     if (resultado.enviosOrdenados.length === 0) {
       throw new Error('No se pudo generar una ruta óptima con los envíos disponibles');
     }
@@ -171,7 +183,7 @@ export class OptimizacionService implements IOptimizacionService {
     const nuevaRuta: Ruta = new Ruta({
       id: uuidv4(),
       equipoId,
-      fecha,
+      fecha: fechaNormalizada, // Usar fecha normalizada
       envios: resultado.enviosOrdenados.map(e => e.id),
       estado: EstadoRuta.PLANIFICADA,
       distanciaTotal: resultado.distanciaTotal,
@@ -184,6 +196,7 @@ export class OptimizacionService implements IOptimizacionService {
 
     // Guardar la ruta en la base de datos
     const rutaCreada = await this.rutaRepository.create(nuevaRuta);
+    console.log(`Ruta creada con ID: ${rutaCreada.id}`);
 
     // Actualizar los envíos con su orden de entrega y equipo asignado
     await Promise.all(resultado.enviosOrdenados.map(async (envio, index) => {
@@ -191,8 +204,9 @@ export class OptimizacionService implements IOptimizacionService {
         equipoId,
         estado: EstadoEnvio.ASIGNADO,
         ordenEntrega: index + 1,
-        fechaEntregaEstimada: new Date(fecha.getTime() + resultado.tiempoEstimado * 60 * 1000)
+        fechaEntregaEstimada: new Date(fechaNormalizada.getTime() + resultado.tiempoEstimado * 60 * 1000)
       });
+      console.log(`Envío ${envio.id} actualizado con orden ${index + 1}`);
     }));
 
     // Notificar a través de PubSub
@@ -261,6 +275,8 @@ export class OptimizacionService implements IOptimizacionService {
       };
     }));
 
+    console.log(`Total de envíos para priorizar: ${enviosConPuntaje.length}`);
+
     // Primera fase: Selección de envíos según capacidad y prioridad
     // Ordenar por puntaje (menor es mejor - más prioritario)
     enviosConPuntaje.sort((a, b) => a.puntaje - b.puntaje);
@@ -270,14 +286,23 @@ export class OptimizacionService implements IOptimizacionService {
     let pesoActual = 0;
     let volumenActual = 0;
     
+    console.log(`Capacidad vehículo - Peso máximo: ${capacidadVehiculo.pesoMaximo}kg, Volumen máximo: ${capacidadVehiculo.volumenMaximo}m³`);
+    
+    // Intentar incluir todos los envíos posibles sin exceder la capacidad
     for (const item of enviosConPuntaje) {
+      // Verificar si añadir este envío sobrepasaría los límites de capacidad
       if (pesoActual + item.envio.peso <= capacidadVehiculo.pesoMaximo && 
           volumenActual + item.envio.volumen <= capacidadVehiculo.volumenMaximo) {
         enviosSeleccionados.push(item);
         pesoActual += item.envio.peso;
         volumenActual += item.envio.volumen;
+        console.log(`Añadido envío ${item.envio.id} a la ruta. Peso acumulado: ${pesoActual}/${capacidadVehiculo.pesoMaximo}, Volumen: ${volumenActual}/${capacidadVehiculo.volumenMaximo}`);
+      } else {
+        console.log(`Envío ${item.envio.id} excede capacidad disponible. No incluido. (Peso: ${item.envio.peso}, Volumen: ${item.envio.volumen})`);
       }
     }
+    
+    console.log(`Seleccionados ${enviosSeleccionados.length} envíos para la ruta. Utilización: ${(pesoActual/capacidadVehiculo.pesoMaximo*100).toFixed(1)}% peso, ${(volumenActual/capacidadVehiculo.volumenMaximo*100).toFixed(1)}% volumen`);
     
     if (enviosSeleccionados.length === 0) {
       return { enviosOrdenados: [], distanciaTotal: 0, tiempoEstimado: 0 };
@@ -324,6 +349,8 @@ export class OptimizacionService implements IOptimizacionService {
     
     // Extraer solo los envíos ordenados
     const enviosOrdenados = rutaOptimizada.map(item => item.envio);
+    
+    console.log(`Ruta optimizada generada con ${enviosOrdenados.length} envíos. Distancia total: ${distanciaTotal}km, Tiempo estimado: ${tiempoEstimado} minutos`);
     
     return {
       enviosOrdenados,
@@ -386,9 +413,16 @@ export class OptimizacionService implements IOptimizacionService {
    * @returns Resultado de la optimización masiva
    */
   async optimizarRutasMasivas(ciudadId: string, fecha: Date): Promise<ResultadoOptimizacionMasiva> {
+    // Normalizar la fecha (sin horas/minutos/segundos)
+    const fechaNormalizada = new Date(fecha);
+    fechaNormalizada.setHours(0, 0, 0, 0);
+    console.log(`Optimización masiva para ciudad ${ciudadId} en fecha ${fechaNormalizada.toISOString()}`);
+    
     // Obtener todos los equipos disponibles en la ciudad
     const equiposEnCiudad = await this.equipoRepository.findByCiudad(ciudadId);
     const equiposDisponibles = equiposEnCiudad.filter(e => e.disponible);
+    
+    console.log(`Equipos en ciudad ${ciudadId}: ${equiposEnCiudad.length}, disponibles: ${equiposDisponibles.length}`);
     
     if (equiposDisponibles.length === 0) {
       throw new Error(`No hay equipos disponibles en la ciudad ${ciudadId}`);
@@ -399,6 +433,8 @@ export class OptimizacionService implements IOptimizacionService {
     const enviosSinAsignar = enviosPendientes.filter(e => 
       e.estado === EstadoEnvio.PENDIENTE && !e.equipoId
     );
+    
+    console.log(`Envíos pendientes en ciudad ${ciudadId}: ${enviosPendientes.length}, sin asignar: ${enviosSinAsignar.length}`);
     
     if (enviosSinAsignar.length === 0) {
       throw new Error(`No hay envíos pendientes sin asignar en la ciudad ${ciudadId}`);
@@ -412,19 +448,27 @@ export class OptimizacionService implements IOptimizacionService {
     for (const equipo of equiposDisponibles) {
       try {
         // Verificar si ya tiene una ruta asignada para esa fecha
-        const rutaExistente = await this.rutaRepository.findByEquipoYFecha(equipo.id, fecha);
+        const rutaExistente = await this.rutaRepository.findByEquipoYFecha(equipo.id, fechaNormalizada);
         if (rutaExistente) {
-          console.log(`El equipo ${equipo.id} ya tiene una ruta asignada para la fecha ${fecha}`);
+          console.log(`El equipo ${equipo.id} ya tiene una ruta asignada para la fecha ${fechaNormalizada.toISOString()}`);
           continue;
         }
         
-        // Optimizar ruta para este equipo
-        const ruta = await this.optimizarRuta(equipo.id, fecha);
-        rutasCreadas.push(ruta);
-        enviosAsignados += ruta.envios.length;
-        
-        // Si ya no quedan envíos por asignar, terminamos
-        if (enviosAsignados >= enviosSinAsignar.length) {
+        // Si quedan envíos por asignar, optimizar ruta para este equipo
+        if (enviosSinAsignar.length > enviosAsignados) {
+          console.log(`Optimizando ruta para equipo ${equipo.id} en fecha ${fechaNormalizada.toISOString()}`);
+          const ruta = await this.optimizarRuta(equipo.id, fechaNormalizada);
+          rutasCreadas.push(ruta);
+          enviosAsignados += ruta.envios.length;
+          console.log(`Ruta creada para equipo ${equipo.id}. Asignados ${ruta.envios.length} envíos. Total hasta ahora: ${enviosAsignados}/${enviosSinAsignar.length}`);
+          
+          // Si ya no quedan envíos por asignar, terminamos
+          if (enviosAsignados >= enviosSinAsignar.length) {
+            console.log(`Se han asignado todos los envíos (${enviosAsignados}). Finalizando optimización.`);
+            break;
+          }
+        } else {
+          console.log(`No quedan envíos por asignar. Finalizando optimización.`);
           break;
         }
       } catch (error) {
@@ -433,6 +477,7 @@ export class OptimizacionService implements IOptimizacionService {
       }
     }
     
+    console.log(`Optimización masiva completada. Rutas creadas: ${rutasCreadas.length}, envíos asignados: ${enviosAsignados}`);
     return {
       rutasCreadas,
       enviosAsignados,
