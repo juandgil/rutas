@@ -50,8 +50,8 @@
  *         descripcion: "Cierre vial por manifestación"
  *         latitud: 4.6782
  *         longitud: -74.0582
- *         ciudadId: "ciudad-001"
- *         equipoId: "equipo-001"
+ *         ciudadId: "bogota"
+ *         equipoId: "eq-001"
  *         impacto: "ALTO"
  *         fecha: "2023-11-15T10:30:00Z"
  *         activo: true
@@ -93,7 +93,7 @@
  *         descripcion: "Cierre vial por manifestación"
  *         latitud: 4.6782
  *         longitud: -74.0582
- *         ciudadId: "ciudad-001" 
- *         equipoId: "equipo-001"
+ *         ciudadId: "bogota"
+ *         equipoId: "eq-001"
  *         impacto: "ALTO"
  */ 

@@ -25,8 +25,8 @@
  *               descripcion: "Cierre vial por manifestación"
  *               latitud: 4.6782
  *               longitud: -74.0582
- *               ciudadId: "ciudad-001"
- *               equipoId: "equipo-001"
+ *               ciudadId: "bogota"
+ *               equipoId: "eq-001"
  *               impacto: "ALTO"
  *               fecha: "2023-11-15T10:30:00Z"
  *               activo: true
@@ -85,8 +85,8 @@
  *                 descripcion: "Cierre vial por manifestación"
  *                 latitud: 4.6782
  *                 longitud: -74.0582
- *                 ciudadId: "ciudad-001"
- *                 equipoId: "equipo-001"
+ *                 ciudadId: "bogota"
+ *                 equipoId: "eq-001"
  *                 impacto: "ALTO"
  *                 fecha: "2023-11-15T10:30:00Z"
  *                 activo: true
@@ -95,7 +95,7 @@
  *                 descripcion: "Inundaciones por fuertes lluvias"
  *                 latitud: 4.6912
  *                 longitud: -74.0653
- *                 ciudadId: "ciudad-001"
+ *                 ciudadId: "bogota"
  *                 equipoId: null
  *                 impacto: "MEDIO"
  *                 fecha: "2023-11-15T11:15:00Z"
@@ -130,7 +130,7 @@
  *         schema:
  *           type: string
  *         description: ID de la ciudad
- *         example: "ciudad-001"
+ *         example: "bogota"
  *     responses:
  *       200:
  *         description: Lista de eventos de la ciudad
@@ -146,8 +146,8 @@
  *                 descripcion: "Cierre vial por manifestación"
  *                 latitud: 4.6782
  *                 longitud: -74.0582
- *                 ciudadId: "ciudad-001"
- *                 equipoId: "equipo-001"
+ *                 ciudadId: "bogota"
+ *                 equipoId: "eq-001"
  *                 impacto: "ALTO"
  *                 fecha: "2023-11-15T10:30:00Z"
  *                 activo: true
@@ -156,7 +156,7 @@
  *                 descripcion: "Inundaciones por fuertes lluvias"
  *                 latitud: 4.6912
  *                 longitud: -74.0653
- *                 ciudadId: "ciudad-001"
+ *                 ciudadId: "bogota"
  *                 equipoId: null
  *                 impacto: "MEDIO"
  *                 fecha: "2023-11-15T11:15:00Z"
@@ -191,7 +191,7 @@
  *         schema:
  *           type: string
  *         description: ID del equipo
- *         example: "equipo-001"
+ *         example: "eq-001"
  *     responses:
  *       200:
  *         description: Lista de eventos del equipo
@@ -207,8 +207,8 @@
  *                 descripcion: "Cierre vial por manifestación"
  *                 latitud: 4.6782
  *                 longitud: -74.0582
- *                 ciudadId: "ciudad-001"
- *                 equipoId: "equipo-001"
+ *                 ciudadId: "bogota"
+ *                 equipoId: "eq-001"
  *                 impacto: "ALTO"
  *                 fecha: "2023-11-15T10:30:00Z"
  *                 activo: true
@@ -217,8 +217,8 @@
  *                 descripcion: "Falla mecánica por sobrecalentamiento"
  *                 latitud: 4.6523
  *                 longitud: -74.0789
- *                 ciudadId: "ciudad-001"
- *                 equipoId: "equipo-001"
+ *                 ciudadId: "bogota"
+ *                 equipoId: "eq-001"
  *                 impacto: "ALTO"
  *                 fecha: "2023-11-15T12:30:00Z"
  *                 activo: true
@@ -276,8 +276,8 @@
  *                   descripcion: "Cierre vial por manifestación"
  *                   latitud: 4.6782
  *                   longitud: -74.0582
- *                   ciudadId: "ciudad-001"
- *                   equipoId: "equipo-001"
+ *                   ciudadId: "bogota"
+ *                   equipoId: "eq-001"
  *                   impacto: "ALTO"
  *                   fecha: "2023-11-15T10:30:00Z"
  *                   activo: false
