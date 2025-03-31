@@ -7,7 +7,7 @@ import { IPubSubService } from '../interfaces/pubsub-service.interface';
 import { ICacheService } from '../../infrastructure/cache/redis-client';
 import { v4 as uuidv4 } from 'uuid';
 // Importar APIs externas
-import { IGpsApi, ITraficoClimaApi, NivelTrafico, NivelImpacto } from '../../domain/interfaces/external-apis.interface';
+import { IGpsApi, ITraficoClimaApi, NivelTrafico } from '../../domain/interfaces/external-apis.interface';
 
 @injectable()
 export class EventoService implements IEventoService {

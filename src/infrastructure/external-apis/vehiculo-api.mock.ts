@@ -24,7 +24,7 @@ export class VehiculoApiMock implements IVehiculoApi {
   private readonly API_BASE_URL = `http://localhost:${config.PORT || 3000}`;
 
   constructor(
-    @inject(TYPES.ICacheService) private cacheService: ICacheService
+    @inject(TYPES.ICacheService) private readonly cacheService: ICacheService
   ) {}
 
   async obtenerCapacidad(vehiculoId: string): Promise<CapacidadVehiculo> {

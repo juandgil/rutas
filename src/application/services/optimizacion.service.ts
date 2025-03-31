@@ -5,20 +5,16 @@ import { IEnvioRepository } from '../../domain/repositories/envio.repository';
 import { IEquipoRepository } from '../../domain/repositories/equipo.repository';
 import { IVehiculoRepository } from '../../domain/repositories/vehiculo.repository';
 import { IRutaRepository } from '../../domain/repositories/ruta.repository';
-import { IGpsRepository } from '../../domain/repositories/gps.repository';
 import { ISlaRepository } from '../../domain/repositories/sla.repository';
 import { IEventoRepository } from '../../domain/repositories/evento.repository';
 import { IPubSubService } from '../interfaces/pubsub-service.interface';
-import { ICacheService } from '../../infrastructure/cache/redis-client';
 import { Ruta, EstadoRuta } from '../../domain/entities/ruta.entity';
 import { Envio, EstadoEnvio } from '../../domain/entities/envio.entity';
 import { Sla } from '../../domain/entities/sla.entity';
-import { Vehiculo } from '../../domain/entities/vehiculo.entity';
 import { v4 as uuidv4 } from 'uuid';
 // Importar interfaces de APIs externas
 import { 
   IVehiculoApi,
-  NivelTrafico,
   NivelImpacto,
   ImpactoRuta,
   Coordenadas,
@@ -26,11 +22,8 @@ import {
 } from '../../domain/interfaces/external-apis.interface';
 import { Equipo } from '../../domain/entities/equipo.entity';
 import { Evento, TipoEvento } from '../../domain/entities/evento.entity';
-import { OptimizarRutaRequestDto } from '../dtos/ruta.dto';
 import { IDatabase } from '../../infrastructure/database/database';
 import {
-  TramoDto,
-  OptimizarRutaResponseDto,
   EnvioOptimizacionDto,
   ResultadoOptimizacion,
   ResultadoOptimizacionMasiva,
@@ -44,16 +37,16 @@ export class OptimizacionService implements IOptimizacionService {
   private readonly TOPIC_RUTAS = 'rutas';
 
   constructor(
-    @inject(TYPES.IRutaRepository) private rutaRepository: IRutaRepository,
-    @inject(TYPES.IEquipoRepository) private equipoRepository: IEquipoRepository,
-    @inject(TYPES.IEnvioRepository) private envioRepository: IEnvioRepository,
-    @inject(TYPES.IVehiculoRepository) private vehiculoRepository: IVehiculoRepository,
-    @inject(TYPES.IEventoRepository) private eventoRepository: IEventoRepository,
-    @inject(TYPES.ISlaRepository) private slaRepository: ISlaRepository,
-    @inject(TYPES.IPubSubService) private pubSubService: IPubSubService,
-    @inject(TYPES.ITraficoClimaService) private traficoClimaService: ITraficoClimaService,
-    @inject(TYPES.IVehiculoApi) private vehiculoApi: IVehiculoApi,
-    @inject(TYPES.IDatabase) private db: IDatabase
+    @inject(TYPES.IRutaRepository) private readonly rutaRepository: IRutaRepository,
+    @inject(TYPES.IEquipoRepository) private readonly equipoRepository: IEquipoRepository,
+    @inject(TYPES.IEnvioRepository) private readonly envioRepository: IEnvioRepository,
+    @inject(TYPES.IVehiculoRepository) private readonly vehiculoRepository: IVehiculoRepository,
+    @inject(TYPES.IEventoRepository) private readonly eventoRepository: IEventoRepository,
+    @inject(TYPES.ISlaRepository) private readonly slaRepository: ISlaRepository,
+    @inject(TYPES.IPubSubService) private readonly pubSubService: IPubSubService,
+    @inject(TYPES.ITraficoClimaService) private readonly traficoClimaService: ITraficoClimaService,
+    @inject(TYPES.IVehiculoApi) private readonly vehiculoApi: IVehiculoApi,
+    @inject(TYPES.IDatabase) private readonly db: IDatabase
   ) {}
 
   // Método para obtener la ubicación actual de un equipo
@@ -203,7 +196,7 @@ export class OptimizacionService implements IOptimizacionService {
     // Mostrar detalles de los envíos pendientes para depuración
     console.log(`Detalles de envíos pendientes:`);
     enviosFiltrados.forEach(e => {
-      console.log(`Envío ${e.id}: estado=${e.estado}, peso=${e.peso}, volumen=${e.volumen}, equipoId=${e.equipoId || 'no asignado'}`);
+      console.log(`Envío ${e.id}: estado=${e.estado}, peso=${e.peso}, volumen=${e.volumen}, equipoId=${e.equipoId ?? 'no asignado'}`);
     });
 
     // Ejecutar algoritmo de optimización
@@ -284,8 +277,8 @@ export class OptimizacionService implements IOptimizacionService {
     slas.forEach(sla => slasMap.set(sla.id, sla));
 
     // Obtener condiciones de tráfico y clima para la ciudad utilizando el servicio
-    const condicionesTrafico = await this.traficoClimaService.obtenerCondicionesTrafico(equipo.ciudadId);
-    const condicionesClima = await this.traficoClimaService.obtenerCondicionesClima(equipo.ciudadId);
+    await this.traficoClimaService.obtenerCondicionesTrafico(equipo.ciudadId);
+    await this.traficoClimaService.obtenerCondicionesClima(equipo.ciudadId);
 
     // Obtener la evaluación general de las condiciones
     const evaluacionCondiciones = await this.traficoClimaService.evaluarCondicionesGenerales(equipo.ciudadId);
@@ -305,7 +298,7 @@ export class OptimizacionService implements IOptimizacionService {
       ) * 111.32; // Aproximación km
 
       // Obtener prioridad del SLA (menor número = mayor prioridad)
-      const prioridadSla = slasMap.get(envio.slaId)?.prioridad || 5;
+      const prioridadSla = slasMap.get(envio.slaId)?.prioridad ?? 5;
       
       // Usar el factor global calculado por el servicio
       const factorAjuste = evaluacionCondiciones.factorDelay;
@@ -643,7 +636,7 @@ export class OptimizacionService implements IOptimizacionService {
     // Obtener condiciones actualizadas utilizando el servicio
     const condicionesTrafico = await this.traficoClimaService.obtenerCondicionesTrafico(equipo.ciudadId);
     const condicionesClima = await this.traficoClimaService.obtenerCondicionesClima(equipo.ciudadId);
-    const evaluacionCondiciones = await this.traficoClimaService.evaluarCondicionesGenerales(equipo.ciudadId);
+    await this.traficoClimaService.evaluarCondicionesGenerales(equipo.ciudadId);
     
     console.log(`Condiciones actuales - Tráfico: ${condicionesTrafico.nivel}, Clima: ${condicionesClima.estado}`);
 
@@ -668,7 +661,7 @@ export class OptimizacionService implements IOptimizacionService {
       ) * 111.32; // Aproximación km
       
       // Obtener prioridad del SLA
-      const prioridadSla = slasMap.get(envio.slaId)?.prioridad || 5;
+      const prioridadSla = slasMap.get(envio.slaId)?.prioridad ?? 5;
       
       // Calcular puntaje
       let factorAjuste = 1.0;

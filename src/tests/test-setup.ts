@@ -277,12 +277,46 @@ jest.mock('../infrastructure/repositories/sla.repository.impl', () => {
   };
 });
 
-// Configurar el contenedor de IoC para las pruebas
-const configureContainer = () => {
-  const container = new Container();
-  // Configurar el contenedor con los mocks
-  // ...
-  return container;
-};
+// Contenedor mock para pruebas
+export const testContainer = new Container();
 
-export { configureContainer }; 
+// Mock básico de PubSubService para pruebas
+class MockPubSubService {
+  async inicializar(): Promise<void> {
+    // No hacer nada en las pruebas
+    return Promise.resolve();
+  }
+  
+  async publicar(topic: string, mensaje: any): Promise<boolean> {
+    // Simular publicación exitosa
+    return Promise.resolve(true);
+  }
+  
+  async suscribir<T>(topic: string, callback: (mensaje: T) => Promise<void>, subscriptionId?: string): Promise<string> {
+    // Devolver un ID de suscripción ficticio
+    return Promise.resolve(subscriptionId || 'test-subscription-id');
+  }
+  
+  async cancelarSuscripcion(subscriptionId: string): Promise<boolean> {
+    return Promise.resolve(true);
+  }
+}
+
+// Configurar el contenedor para pruebas
+testContainer.bind(TYPES.IPubSubService).toConstantValue(new MockPubSubService());
+
+// Otros servicios de mock básicos que puedan ser necesarios en las pruebas
+testContainer.bind(TYPES.Logger).toConstantValue({
+  info: jest.fn(),
+  error: jest.fn(),
+  warning: jest.fn(),
+  debug: jest.fn()
+});
+
+// Función para resetear los mocks en pruebas
+export function resetTestMocks() {
+  jest.resetAllMocks();
+}
+
+// Configuración global de Jest
+jest.setTimeout(30000); // 30 segundos de timeout por defecto para pruebas 

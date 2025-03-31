@@ -9,9 +9,9 @@ import { IPubSubService } from '../../application/interfaces/pubsub-service.inte
  */
 @injectable()
 export class GoogleCloudPubSubService implements IPubSubService {
-  private pubSubClient: PubSub;
+  private readonly pubSubClient: PubSub;
   private mainTopic!: Topic; // Using definite assignment assertion
-  private subscriptions: Map<string, { subscription: Subscription, callback: Function }> = new Map();
+  private readonly subscriptions: Map<string, { subscription: Subscription, callback: Function }> = new Map();
   private initialized = false;
   private readonly identificadorId: string;
   private readonly MAIN_TOPIC: string;
@@ -34,7 +34,7 @@ export class GoogleCloudPubSubService implements IPubSubService {
     }
     
     this.pubSubClient = new PubSub(pubsubOptions);
-    this.identificadorId = process.env.USER_ID || 'default-user';
+    this.identificadorId = process.env.USER_ID ?? 'default-user';
     this.MAIN_TOPIC = 'juan-gil-rutas-events';
     this.SUBSCRIPTION_PREFIX = 'rutas-events';
     
@@ -113,7 +113,7 @@ export class GoogleCloudPubSubService implements IPubSubService {
     await this.ensureInitialized();
     
     // Crear un ID para la suscripción siguiendo el formato solicitado
-    const subId = subscriptionId || `${this.SUBSCRIPTION_PREFIX}-${tipoMensaje}-${Date.now()}`;
+    const subId = subscriptionId ?? `${this.SUBSCRIPTION_PREFIX}-${tipoMensaje}-${Date.now()}`;
     
     // Verificar si ya existe la suscripción localmente
     const subscriptionInMemory = this.subscriptions.has(subId);

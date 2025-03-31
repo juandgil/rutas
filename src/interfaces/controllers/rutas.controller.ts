@@ -276,6 +276,9 @@ export class RutasController {
         );
       }
 
+      // Validar que la replanificación es posible
+      await this.optimizacionService.validarReplanificacion(equipoId, eventoId);
+
       // Iniciar procesamiento asíncrono
       console.log(`Iniciando replanificación asíncrona para equipo ${equipoId}, evento ${eventoId}, requestId: ${requestId}`);
       
@@ -290,6 +293,15 @@ export class RutasController {
       const result = await this.waitForResult(requestId);
       
       if (!result) {
+        // Intentar obtener la ruta actual para verificar si existe
+        const rutaActual = await this.rutaRepository.findByEquipoAndDate(equipoId, new Date());
+        
+        if (!rutaActual) {
+          return res.status(400).json(
+            new ApiResponse(false, 'No hay ruta activa para replanificar', null)
+          );
+        }
+        
         return res.status(202).json(
           new ApiResponse(true, 'La replanificación de ruta está en proceso. Intente consultar el estado más tarde.', { 
             requestId, 
@@ -311,7 +323,7 @@ export class RutasController {
       }
       
       return res.status(200).json(
-        new ApiResponse(true, 'Ruta replanificada correctamente', result.ruta)
+        new ApiResponse(true, 'Ruta replanificada exitosamente', result.ruta)
       );
     } catch (error) {
       console.error(`Error al replanificar ruta: ${(error as Error).message}`);
