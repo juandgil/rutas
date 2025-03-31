@@ -129,8 +129,8 @@ export class RutaRepository extends BaseRepository<Ruta, string> implements IRut
         AND replanificada = true
         AND ultimo_evento_id = $3
       `;
-      const result = await this.db.one<{ count: number }>(query, [equipoId, fechaFormateada, eventoId]);
-      return result.count > 0;
+      const result = await this.db.query<{ count: number }>(query, [equipoId, fechaFormateada, eventoId]);
+      return result.length > 0 && Number(result[0].count) > 0;
     } catch (error) {
       console.error('Error al verificar replanificación previa:', error);
       throw error;

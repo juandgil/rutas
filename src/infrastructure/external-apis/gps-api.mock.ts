@@ -3,21 +3,20 @@ import { IGpsApi, GpsUbicacion } from '../../domain/interfaces/external-apis.int
 import { ICacheService } from '../cache/redis-client';
 import { inject } from 'inversify';
 import { TYPES } from '../ioc/types';
-import axios from 'axios';
-import config from '../config/config';
+import { IDatabase } from '../database/database';
 
 /**
  * Implementación simulada de la API de GPS para transportistas
- * que ahora consume los endpoints HTTP
+ * que ahora consulta directamente la base de datos
  */
 @injectable()
 export class GpsApiMock implements IGpsApi {
   private readonly CACHE_KEY_PREFIX = 'gps:ubicacion:';
   private readonly CACHE_TTL = 120; // 2 minutos en segundos (la posición GPS cambia rápidamente)
-  private readonly API_BASE_URL = `http://localhost:${config.PORT || 3000}`;
 
   constructor(
-    @inject(TYPES.ICacheService) private cacheService: ICacheService
+    @inject(TYPES.ICacheService) private cacheService: ICacheService,
+    @inject(TYPES.IDatabase) private db: IDatabase
   ) {}
 
   async obtenerUbicacion(equipoId: string): Promise<GpsUbicacion> {
@@ -31,15 +30,22 @@ export class GpsApiMock implements IGpsApi {
         return cachedData;
       }
       
-      // Consumir el endpoint HTTP
-      console.log(`[GpsAPI] Consultando API para ubicación de equipo ${equipoId}`);
-      const response = await axios.get(`${this.API_BASE_URL}/api/gps/ubicacion/${equipoId}`);
+      // Consultar directamente la tabla equipos_ubicacion_actual
+      console.log(`[GpsAPI] Consultando base de datos para ubicación de equipo ${equipoId}`);
+      const query = `
+        SELECT equipo_id as "equipoId", latitud, longitud, velocidad, timestamp
+        FROM equipos_ubicacion_actual
+        WHERE equipo_id = $1
+      `;
       
-      if (!response.data.success) {
-        throw new Error(`Error al obtener ubicación GPS: ${response.data.message}`);
+      const result = await this.db.query<GpsUbicacion>(query, [equipoId]);
+      
+      if (result.length === 0) {
+        // Si no hay ubicación registrada, generar una por defecto
+        return this.generarUbicacionPorDefecto(equipoId);
       }
       
-      const ubicacion = response.data.data;
+      const ubicacion = result[0];
       
       // Guardar en caché
       await this.cacheService.set(cacheKey, ubicacion, this.CACHE_TTL);
@@ -55,23 +61,20 @@ export class GpsApiMock implements IGpsApi {
 
   async obtenerHistorico(equipoId: string, desde: Date, hasta: Date): Promise<GpsUbicacion[]> {
     try {
-      // No usamos caché para datos históricos porque son consultas específicas
-      // y probablemente no se repitan exactamente igual
+      console.log(`[GpsAPI] Consultando base de datos para historial GPS de equipo ${equipoId}`);
       
-      console.log(`[GpsAPI] Consultando API para historial GPS de equipo ${equipoId}`);
-      // Formatear fechas para la URL
-      const desdeStr = desde.toISOString();
-      const hastaStr = hasta.toISOString();
+      // Consultar directamente la tabla gps_registros
+      const query = `
+        SELECT equipo_id as "equipoId", latitud, longitud, velocidad, timestamp
+        FROM gps_registros
+        WHERE equipo_id = $1 AND timestamp BETWEEN $2 AND $3
+        ORDER BY timestamp ASC
+        LIMIT 1000
+      `;
       
-      const response = await axios.get(
-        `${this.API_BASE_URL}/api/gps/historico/${equipoId}?desde=${desdeStr}&hasta=${hastaStr}`
-      );
+      const result = await this.db.query<GpsUbicacion>(query, [equipoId, desde, hasta]);
       
-      if (!response.data.success) {
-        throw new Error(`Error al obtener historial GPS: ${response.data.message}`);
-      }
-      
-      return response.data.data;
+      return result;
     } catch (error) {
       console.error(`[GpsAPI] Error al obtener historial GPS para equipo ${equipoId}:`, error);
       // En caso de error, devolver una lista vacía
@@ -82,21 +85,54 @@ export class GpsApiMock implements IGpsApi {
   async registrarUbicacion(ubicacion: GpsUbicacion): Promise<GpsUbicacion> {
     try {
       console.log(`[GpsAPI] Registrando ubicación para equipo ${ubicacion.equipoId}`);
-      // Registrar en el sistema a través del endpoint HTTP
-      const response = await axios.post(`${this.API_BASE_URL}/api/gps/ubicacion`, ubicacion);
       
-      if (!response.data.success) {
-        throw new Error(`Error al registrar ubicación GPS: ${response.data.message}`);
-      }
+      // 1. Insertar en la tabla de historial gps_registros
+      const insertQuery = `
+        INSERT INTO gps_registros (
+          id, equipo_id, latitud, longitud, velocidad, timestamp, created_at
+        ) VALUES (
+          uuid_generate_v4(), $1, $2, $3, $4, $5, NOW()
+        )
+      `;
       
-      const nuevaUbicacion = response.data.data;
+      await this.db.execute(insertQuery, [
+        ubicacion.equipoId,
+        ubicacion.latitud,
+        ubicacion.longitud,
+        ubicacion.velocidad,
+        ubicacion.timestamp || new Date()
+      ]);
+      
+      // 2. Actualizar la tabla equipos_ubicacion_actual
+      const upsertQuery = `
+        INSERT INTO equipos_ubicacion_actual (
+          equipo_id, latitud, longitud, velocidad, timestamp, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, NOW()
+        )
+        ON CONFLICT (equipo_id) 
+        DO UPDATE SET 
+          latitud = $2,
+          longitud = $3,
+          velocidad = $4,
+          timestamp = $5,
+          updated_at = NOW()
+      `;
+      
+      await this.db.execute(upsertQuery, [
+        ubicacion.equipoId,
+        ubicacion.latitud,
+        ubicacion.longitud,
+        ubicacion.velocidad,
+        ubicacion.timestamp || new Date()
+      ]);
       
       // Actualizar la caché con la ubicación más reciente
       const cacheKey = `${this.CACHE_KEY_PREFIX}${ubicacion.equipoId}`;
-      await this.cacheService.set(cacheKey, nuevaUbicacion, this.CACHE_TTL);
+      await this.cacheService.set(cacheKey, ubicacion, this.CACHE_TTL);
       console.log(`[GpsAPI] Ubicación registrada y actualizada en caché para equipo ${ubicacion.equipoId}`);
       
-      return nuevaUbicacion;
+      return ubicacion;
     } catch (error) {
       console.error(`[GpsAPI] Error al registrar ubicación GPS para equipo ${ubicacion.equipoId}:`, error);
       throw error;

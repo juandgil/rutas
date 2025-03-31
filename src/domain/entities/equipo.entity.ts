@@ -14,15 +14,15 @@ export class Equipo {
   updatedAt: Date;
 
   constructor(data: Partial<Equipo>) {
-    this.id = data.id || '';
-    this.nombre = data.nombre || '';
-    this.transportistas = data.transportistas || [];
-    this.vehiculoId = data.vehiculoId || '';
-    this.disponible = data.disponible !== undefined ? data.disponible : true;
-    this.ciudadId = data.ciudadId || '';
-    this.latitud = data.latitud || 0;
-    this.longitud = data.longitud || 0;
-    this.createdAt = data.createdAt || new Date();
-    this.updatedAt = data.updatedAt || new Date();
+    this.id = data.id ?? '';
+    this.nombre = data.nombre ?? '';
+    this.transportistas = data.transportistas ?? [];
+    this.vehiculoId = data.vehiculoId ?? '';
+    this.disponible = data.disponible ?? true;
+    this.ciudadId = data.ciudadId ?? '';
+    this.latitud = data.latitud ?? 0;
+    this.longitud = data.longitud ?? 0;
+    this.createdAt = data.createdAt ?? new Date();
+    this.updatedAt = data.updatedAt ?? new Date();
   }
 } 

@@ -15,12 +15,12 @@ export class EventoService implements IEventoService {
   private readonly TOPIC_EVENTOS = 'eventos';
 
   constructor(
-    @inject(TYPES.IEventoRepository) private eventoRepository: IEventoRepository,
-    @inject(TYPES.IPubSubService) private pubSubService: IPubSubService,
-    @inject(TYPES.ICacheService) private cacheService: ICacheService,
+    @inject(TYPES.IEventoRepository) private readonly eventoRepository: IEventoRepository,
+    @inject(TYPES.IPubSubService) private readonly pubSubService: IPubSubService,
+    @inject(TYPES.ICacheService) private readonly cacheService: ICacheService,
     // Inyectar APIs externas
-    @inject(TYPES.IGpsApi) private gpsApi: IGpsApi,
-    @inject(TYPES.ITraficoClimaApi) private traficoClimaApi: ITraficoClimaApi
+    @inject(TYPES.IGpsApi) private readonly gpsApi: IGpsApi,
+    @inject(TYPES.ITraficoClimaApi) private readonly traficoClimaApi: ITraficoClimaApi
   ) {}
 
   async registrarEvento(evento: Partial<Evento>): Promise<Evento> {

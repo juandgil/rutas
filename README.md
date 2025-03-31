@@ -238,9 +238,9 @@ La implementación actual utiliza Google Cloud Pub/Sub con los siguientes temas:
 - `PUT /api/eventos/:id/inactivar`: Marca un evento como inactivo
 
 ### GPS
-- `GET /api/gps/ubicacion/:equipoId`: Obtiene la ubicación actual de un equipo
-- `GET /api/gps/historico/:equipoId`: Obtiene el historial de ubicaciones GPS de un equipo
-- `POST /api/gps/ubicacion`: Registra una nueva ubicación GPS para un equipo
+
+- `POST /api/gps/sincronizar_ubicacion`: Sincroniza las ubicaciones actuales de todos los equipos desde los registros GPS (ejecutado automáticamente por Cloud Scheduler cada 5 minutos usando la expresión cron `0 */5 * * *`)
+- `POST /api/gps/generar_datos_prueba`: Genera datos de prueba para simular ubicaciones GPS (solo en entorno de desarrollo)
 
 ### Tráfico y Clima
 - `GET /api/trafico-clima/trafico/:ciudadId`: Obtiene condiciones de tráfico para una ciudad
@@ -369,23 +369,21 @@ El sistema implementa algoritmos avanzados para la planificación y optimizació
 
 ### Algoritmo del Vecino Más Cercano
 
-Este algoritmo se utiliza para determinar el orden óptimo de entrega una vez que se han seleccionado los envíos para un vehículo:
+Este algoritmo es utilizado para optimizar el orden de entrega de los envíos seleccionados:
 
-1. **Funcionamiento básico**: 
-   - Comienza en la ubicación actual del vehículo
-   - Selecciona el destino más cercano no visitado
-   - Se mueve a ese destino y lo marca como visitado
-   - Repite hasta que todos los destinos hayan sido visitados
-
-2. **Ventajas**:
-   - Implementación sencilla y eficiente
-   - Rendimiento computacional rápido para decisiones en tiempo real
-   - Resultados razonablemente buenos para la mayoría de escenarios urbanos
-
-3. **Optimizaciones adicionales**:
-   - Consideración de factores de tráfico en tiempo real
-   - Ajustes por condiciones climáticas
-   - Priorización según SLAs de clientes
+1. **Punto de inicio**: Comienza en la ubicación actual del equipo (obtenida de la tabla `equipos_ubicacion_actual`)
+2. **Proceso iterativo**:
+   - Calcula la distancia desde la ubicación actual a todos los envíos pendientes
+   - Selecciona el envío más cercano
+   - Se mueve a esa ubicación
+   - Marca el envío como visitado
+   - Repite hasta visitar todos los envíos
+3. **Complejidad**: O(n²) donde n es el número de envíos
+4. **Consideraciones**:
+   - No necesariamente encuentra la ruta óptima global (problema del viajante)
+   - Ofrece buen balance entre calidad de solución y rendimiento
+   - Funciona bien para distribución geográfica típica de envíos urbanos
+   - La ubicación actual proviene de datos GPS almacenados en la tabla `equipos_ubicacion_actual`, que se actualiza cada 5 horas
 
 ### Algoritmo de Asignación de Envíos a Vehículos
 
@@ -668,28 +666,6 @@ EventoRepository.create() → PubSubService.publicar('delivery-events') → Clie
    - Éxito: `{ success: true, message: string, data: Evento }`
    - Error: `{ success: false, message: string, data: { error } }`
 
-### Obtener Ubicación GPS: GET /api/gps/ubicacion/:equipoId
-
-**Flujo de Secuencia:**
-```
-Cliente → GpsController.getUbicacion() → GpsRepository.findUltimaUbicacion() →
-[Si no existe] → EquipoRepository.findById() → [Crear ubicación predeterminada] → Cliente
-```
-
-**Detalles:**
-1. **Entrada:**
-   - `equipoId` (parámetro de ruta)
-2. **Procesamiento:**
-   - Busca la última ubicación GPS registrada
-   - Si no existe, verifica que el equipo exista
-   - Genera una ubicación predeterminada en caso necesario
-3. **Repositorios/Tablas:**
-   - `GpsRepository` (tabla `gps_registros`)
-   - `EquipoRepository` (tabla `equipos`)
-4. **Salida:**
-   - Éxito: `{ success: true, message: string, data: { equipoId, latitud, longitud, velocidad, timestamp } }`
-   - Error: `{ success: false, message: string, data: { error } }`
-
 ### Condiciones de Tráfico: GET /api/trafico-clima/trafico/:ciudadId
 
 **Flujo de Secuencia:**
@@ -815,3 +791,145 @@ TraficoClimaService.evaluarCondicionesGenerales() →
      * Actualiza estado de envíos y rutas en BD
    - Maneja errores para continuar con otros equipos si alguno falla
 3. **Salida:** Resumen con rutas creadas, envíos asignados y equipos optimizados
+
+## Estructura de la Base de Datos
+
+El sistema utiliza una base de datos PostgreSQL para almacenar datos operativos e históricos. A continuación se detalla la estructura real de la base de datos, las tablas que pertenecen a servicios externos, y cómo se relacionan entre sí.
+
+### Tablas Principales Internas
+
+**1. equipos**
+- Almacena información sobre los equipos de entrega y sus transportistas
+- Campos principales: `id` (PK), `nombre`, `transportistas` (JSONB), `vehiculo_id`, `disponible`, `ciudad_id`
+- Relación directa con vehículos (un equipo tiene un vehículo asignado)
+- Relación con envíos (un equipo puede tener múltiples envíos asignados)
+- Relación con rutas (un equipo puede tener múltiples rutas)
+
+**2. vehiculos**
+- Almacena información básica sobre la flota de vehículos disponibles
+- Campos principales: `id` (PK), `placa`, `modelo`, `tipo`, `capacidad_peso`, `capacidad_volumen`, `disponible`
+- Relacionado con equipos (un vehículo puede estar asignado a un equipo)
+
+**3. envios**
+- Contiene los detalles de cada paquete o envío a entregar
+- Campos principales: `id` (PK), `guia`, `direccion_origen`, `direccion_destino`, `latitud_destino`, `longitud_destino`, `ciudad_id`, `peso`, `volumen`, `estado`, `sla_id`, `equipo_id`, `orden_entrega`, `fecha_entrega_estimada`, `fecha_entrega_real`
+- Relacionado con equipos (un envío puede ser asignado a un equipo)
+- Relacionado con SLAs (cada envío tiene un SLA asociado)
+
+**4. rutas**
+- Almacena las rutas optimizadas para cada equipo
+- Campos principales: `id` (PK), `equipo_id`, `fecha`, `envios` (JSONB), `estado`, `distancia_total`, `tiempo_estimado`, `replanificada`, `ultimo_evento_id`
+- Relacionado con equipos (cada ruta pertenece a un equipo)
+- Contiene referencia a eventos (cuando una ruta ha sido replanificada debido a un evento)
+
+**5. eventos**
+- Registra eventos inesperados que pueden afectar las rutas
+- Campos principales: `id` (PK), `equipo_id`, `tipo`, `descripcion`, `latitud`, `longitud`, `ciudad_id`, `impacto`, `fecha`, `activo`, `metadatos` (JSONB)
+- Relacionado con equipos (un evento puede estar asociado a un equipo)
+- Puede provocar replanificación de rutas
+
+**6. equipos_ubicacion_actual**
+- Tabla normalizada que mantiene la ubicación actual de cada equipo
+- Campos principales: `equipo_id` (PK), `latitud`, `longitud`, `velocidad`, `timestamp`
+- Relacionado con equipos (referencia directa por clave foránea)
+- NOTA: Se actualiza con datos del servicio externo de GPS mediante el proceso de sincronización
+
+**7. slas**
+- Define los acuerdos de nivel de servicio para los envíos
+- Campos principales: `id` (PK), `nombre`, `descripcion`, `tiempo_entrega`, `prioridad`, `activo`
+- Relacionado con envíos (un SLA puede aplicar a múltiples envíos)
+
+**8. usuarios**
+- Almacena los usuarios del sistema con sus roles y credenciales
+- Campos principales: `id` (PK), `username`, `password`, `nombre`, `apellido`, `role`, `activo`
+- Roles definidos: ADMIN, OPERADOR, TRANSPORTISTA
+
+### Relaciones Principales entre Tablas Internas
+
+- **Equipos y Vehículos**: Relación uno a uno. Un equipo tiene asignado un vehículo (`equipos.vehiculo_id → vehiculos.id`).
+
+- **Equipos y Envíos**: Relación uno a muchos. Un equipo puede tener múltiples envíos asignados (`envios.equipo_id → equipos.id`).
+
+- **Envíos y SLAs**: Relación muchos a uno. Múltiples envíos pueden tener el mismo SLA (`envios.sla_id → slas.id`).
+
+- **Equipos y Rutas**: Relación uno a muchos. Un equipo puede tener múltiples rutas asignadas en diferentes fechas (`rutas.equipo_id → equipos.id`).
+
+- **Equipos y Eventos**: Relación uno a muchos. Un equipo puede registrar múltiples eventos (`eventos.equipo_id → equipos.id`).
+
+- **Equipos y Ubicación Actual**: Relación uno a uno. Cada equipo tiene exactamente una ubicación actual (`equipos_ubicacion_actual.equipo_id → equipos.id`).
+
+### Tablas Externas
+
+**1. gps_registros**
+- Tabla que pertenece al API de GPS, no es interna del sistema
+- Almacena el histórico de ubicaciones GPS de los equipos
+- Campos principales: `id` (PK), `equipo_id`, `latitud`, `longitud`, `velocidad`, `timestamp`
+- Se utiliza como fuente de datos para actualizar la tabla interna `equipos_ubicacion_actual`
+- Contiene datos de simulación para pruebas y desarrollo
+
+### Servicios Externos (Sin Tablas en la Base de Datos)
+
+El sistema interactúa con varios servicios externos a través de APIs. Estos servicios NO tienen tablas propias en la base de datos del sistema y NO mantienen relaciones directas en la base de datos con las tablas internas.
+
+#### 1. Servicio de Tráfico y Clima (TraficoClimaApi)
+- **Naturaleza**: Servicio completamente externo
+- **Datos proporcionados**: Condiciones de tráfico, clima e impacto en rutas
+- **Método de integración**: API REST
+- **Almacenamiento**: No se almacenan permanentemente estos datos en la base de datos
+- **Uso de datos**: 
+  - Utilizados temporalmente durante la planificación y replanificación de rutas
+  - Afectan cálculos de tiempos estimados y priorización de entregas
+  - Se pueden cachear brevemente (Redis) para mejorar rendimiento
+
+#### 2. Servicio de GPS (GpsApi)
+- **Naturaleza**: Servicio externo con persistencia de datos en tabla externa `gps_registros`
+- **Datos proporcionados**: Ubicaciones en tiempo real de equipos
+- **Método de integración**: API REST y mensajes asíncronos (Pub/Sub)
+- **Almacenamiento**: 
+  - Los datos recibidos se almacenan en la tabla externa `gps_registros`
+  - Datos relevantes se sincronizan a la tabla interna `equipos_ubicacion_actual`
+- **Uso de datos**: 
+  - Seguimiento en tiempo real de equipos
+  - Base para replanificaciones
+  - Histórico de movimiento de flota
+- **Sincronización**: 
+  - El endpoint `POST /api/gps/sincronizar_ubicacion` (URL completa: `http://localhost:3000/api/gps/sincronizar_ubicacion`)
+  - Se ejecuta cada 5 horas (anteriormente cada 5 minutos) mediante Cloud Scheduler
+  - Configuración cron: `0 */5 * * *`
+  - Obtiene ubicaciones aleatorias de `gps_registros` para cada equipo activo
+  - Actualiza la tabla `equipos_ubicacion_actual` con la última ubicación
+  - Publica actualizaciones al tema `gps-updates` de Pub/Sub para notificar a otros sistemas
+- **Generación de datos de prueba**:
+  - Endpoint: `POST /api/gps/generar_datos_prueba`
+  - Ejemplo de inserción manual de datos:
+  ```sql
+  INSERT INTO gps_registros (id, equipo_id, latitud, longitud, velocidad, timestamp)
+  VALUES 
+    ('gps-101', 'equipo-001', 4.65123, -74.05456, 35.5, NOW()),
+    ('gps-102', 'equipo-001', 4.66789, -74.06123, 40.2, NOW() - INTERVAL '30 minutes'),
+    ('gps-103', 'equipo-002', 4.61234, -74.08567, 22.3, NOW()),
+    ('gps-104', 'equipo-002', 4.62345, -74.07890, 15.7, NOW() - INTERVAL '45 minutes');
+  ```
+
+#### 3. Servicio de Vehículos (VehiculoApi)
+- **Naturaleza**: Servicio externo que complementa datos internos
+- **Datos proporcionados**: Información detallada sobre estado y mantenimiento de vehículos
+- **Método de integración**: API REST
+- **Almacenamiento**: 
+  - Información básica se almacena en la tabla interna `vehiculos`
+  - Datos detallados no se persisten en la base de datos
+  - No existe una "tabla externa" de vehículos
+- **Uso de datos**:
+  - Verificación de disponibilidad en tiempo real
+  - Información detallada sobre mantenimiento cuando se necesita
+  - Características avanzadas del vehículo al planificar rutas
+
+### Integración de Datos entre Sistema y Servicios Externos
+
+- **Sin relaciones directas en base de datos**: Los servicios externos no tienen tablas en la base de datos del sistema, por lo que no existen relaciones SQL entre ellos y las tablas internas.
+
+- **Obtención de datos**: Se realiza mediante llamadas API o suscripciones Pub/Sub en el momento que se necesitan.
+
+- **Persistencia selectiva**: Solo ciertos datos externos (como ubicaciones GPS) se persisten en tablas internas del sistema.
+
+- **Patrón de resiliencia**: Implementación de Circuit Breaker para manejar fallos en servicios externos y estrategias de caché.

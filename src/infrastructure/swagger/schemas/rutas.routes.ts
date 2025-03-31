@@ -20,7 +20,7 @@
  *           type: string
  *           format: date
  *         description: Fecha para la que se optimizará la ruta (formato YYYY-MM-DD). Por defecto es la fecha actual.
- *         example: "2023-11-15"
+ *         example: "2025-03-31"
  *     responses:
  *       200:
  *         description: Ruta optimizada o mensaje informativo

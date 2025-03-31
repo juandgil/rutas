@@ -46,9 +46,9 @@ function snakeToCamel(row: any): any {
 
 // Interfaz para la base de datos
 export interface IDatabase {
-  query<T>(text: string, params?: any[]): Promise<T[]>;
-  one<T>(text: string, params?: any[]): Promise<T>;
-  none(text: string, params?: any[]): Promise<void>;
+  query<T>(query: string, params?: any[]): Promise<T[]>;
+  execute(query: string, params?: any[]): Promise<void>;
+  transaction<T>(callback: (db: IDatabase) => Promise<T>): Promise<T>;
 }
 
 @injectable()
@@ -59,9 +59,9 @@ export class Database implements IDatabase {
     this.db = pgp(dbConfig);
   }
 
-  async query<T>(text: string, params?: any[]): Promise<T[]> {
+  async query<T>(query: string, params?: any[]): Promise<T[]> {
     try {
-      const rows = await this.db.any(text, params);
+      const rows = await this.db.any(query, params);
       // Convertir nombres de columnas snake_case a camelCase
       return rows.map((row: any) => snakeToCamel(row) as T);
     } catch (error) {
@@ -70,22 +70,23 @@ export class Database implements IDatabase {
     }
   }
 
-  async one<T>(text: string, params?: any[]): Promise<T> {
+  async execute(query: string, params?: any[]): Promise<void> {
     try {
-      const row = await this.db.one(text, params);
-      // Convertir nombres de columnas snake_case a camelCase
-      return snakeToCamel(row) as T;
+      return await this.db.none(query, params);
     } catch (error) {
       console.error('Error en la consulta a la BD:', error);
       throw error;
     }
   }
 
-  async none(text: string, params?: any[]): Promise<void> {
+  async transaction<T>(callback: (db: IDatabase) => Promise<T>): Promise<T> {
     try {
-      return await this.db.none(text, params);
+      return await this.db.tx(async (t: any) => {
+        const db = new Database();
+        return await callback(db);
+      });
     } catch (error) {
-      console.error('Error en la consulta a la BD:', error);
+      console.error('Error en la transacción:', error);
       throw error;
     }
   }

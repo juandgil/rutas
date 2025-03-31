@@ -63,14 +63,14 @@
  *           type: string
  *           format: date-time
  *         description: Fecha y hora de inicio (ISO 8601)
- *         example: "2023-11-14T00:00:00Z"
+ *         example: "2025-03-31T00:00:00Z"
  *       - in: query
  *         name: hasta
  *         schema:
  *           type: string
  *           format: date-time
  *         description: Fecha y hora de fin (ISO 8601)
- *         example: "2023-11-15T23:59:59Z"
+ *         example: "2025-03-31T23:59:59Z"
  *     responses:
  *       200:
  *         description: Historial de ubicaciones GPS

@@ -131,7 +131,7 @@ export abstract class BaseRepository<T, ID> implements IBaseRepository<T, ID> {
   async delete(id: ID): Promise<boolean> {
     try {
       const query = `DELETE FROM ${this.tableName} WHERE ${this.pkColumn} = $1`;
-      await this.db.none(query, [id]);
+      await this.db.execute(query, [id]);
       return true;
     } catch (error) {
       console.error(`Error al eliminar de ${this.tableName}:`, error);

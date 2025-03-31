@@ -17,7 +17,6 @@ import { Vehiculo } from '../../domain/entities/vehiculo.entity';
 import { v4 as uuidv4 } from 'uuid';
 // Importar interfaces de APIs externas
 import { 
-  IGpsApi, 
   IVehiculoApi,
   NivelTrafico,
   NivelImpacto,
@@ -53,7 +52,6 @@ export class OptimizacionService implements IOptimizacionService {
     @inject(TYPES.ISlaRepository) private slaRepository: ISlaRepository,
     @inject(TYPES.IPubSubService) private pubSubService: IPubSubService,
     @inject(TYPES.ITraficoClimaService) private traficoClimaService: ITraficoClimaService,
-    @inject(TYPES.IGpsApi) private gpsApi: IGpsApi,
     @inject(TYPES.IVehiculoApi) private vehiculoApi: IVehiculoApi,
     @inject(TYPES.IDatabase) private db: IDatabase
   ) {}
@@ -61,7 +59,7 @@ export class OptimizacionService implements IOptimizacionService {
   // Método para obtener la ubicación actual de un equipo
   private async obtenerUbicacionEquipo(equipoId: string): Promise<{ latitud: number; longitud: number }> {
     try {
-      // Primero intentamos obtener la ubicación desde la tabla normalizada
+      // Obtener la ubicación desde la tabla normalizada
       const query = `
         SELECT latitud, longitud 
         FROM equipos_ubicacion_actual 
@@ -75,20 +73,19 @@ export class OptimizacionService implements IOptimizacionService {
         return result[0];
       }
       
-      // Si no hay datos en la tabla normalizada, intentamos obtener del GPS API
-      console.log(`No se encontró ubicación en la tabla. Consultando API GPS para equipo ${equipoId}`);
-      const ubicacionGps = await this.gpsApi.obtenerUbicacion(equipoId);
+      // Si no se encuentra ubicación, usar coordenadas por defecto
+      console.log(`No se encontró ubicación para equipo ${equipoId}. Usando coordenadas por defecto`);
       
-      if (ubicacionGps) {
-        return {
-          latitud: ubicacionGps.latitud,
-          longitud: ubicacionGps.longitud
-        };
-      }
+      // Coordenadas predeterminadas según el equipo
+      const coordenadasPredeterminadas: Record<string, { latitud: number; longitud: number }> = {
+        'equipo-001': { latitud: 4.65, longitud: -74.05 },
+        'equipo-002': { latitud: 4.61, longitud: -74.08 },
+        'equipo-003': { latitud: 4.70, longitud: -74.04 },
+        'equipo-004': { latitud: 4.67, longitud: -74.07 },
+        'default': { latitud: 4.63, longitud: -74.06 }
+      };
       
-      // Si todo falla, devolvemos coordenadas por defecto
-      console.log(`No se pudo obtener ubicación para equipo ${equipoId}. Usando coordenadas por defecto`);
-      return { latitud: 4.65, longitud: -74.05 };
+      return coordenadasPredeterminadas[equipoId] || coordenadasPredeterminadas['default'];
     } catch (error) {
       console.error(`Error al obtener ubicación del equipo ${equipoId}:`, error);
       return { latitud: 4.65, longitud: -74.05 }; // Coordenadas por defecto
@@ -623,14 +620,28 @@ export class OptimizacionService implements IOptimizacionService {
       updatedAt: new Date()
     });
 
-    // Registrar la ubicación actual del equipo
-    await this.gpsApi.registrarUbicacion({
+    // Registrar la ubicación actual del equipo en la tabla equipos_ubicacion_actual
+    const upsertQuery = `
+      INSERT INTO equipos_ubicacion_actual (
+        equipo_id, latitud, longitud, velocidad, timestamp, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, NOW(), NOW()
+      )
+      ON CONFLICT (equipo_id) 
+      DO UPDATE SET 
+        latitud = $2,
+        longitud = $3,
+        velocidad = $4,
+        timestamp = NOW(),
+        updated_at = NOW()
+    `;
+    
+    await this.db.execute(upsertQuery, [
       equipoId,
-      latitud: ubicacionEquipo.latitud,
-      longitud: ubicacionEquipo.longitud,
-      velocidad: 0, // Valor por defecto
-      timestamp: new Date()
-    });
+      ubicacionEquipo.latitud,
+      ubicacionEquipo.longitud,
+      40 // Velocidad simulada en km/h
+    ]);
 
     // Notificar a través de PubSub
     await this.pubSubService.publicar(`${this.TOPIC_RUTAS}:replanificada`, rutaActualizada);
@@ -715,12 +726,26 @@ export class OptimizacionService implements IOptimizacionService {
     equipo: Equipo,
     coordenadas: Coordenadas
   ): Promise<void> {
-    await this.gpsApi.registrarUbicacion({
-      equipoId: equipo.id,
-      latitud: coordenadas.latitud,
-      longitud: coordenadas.longitud,
-      timestamp: new Date(),
-      velocidad: 40 // Velocidad simulada en km/h
-    });
+    const upsertQuery = `
+      INSERT INTO equipos_ubicacion_actual (
+        equipo_id, latitud, longitud, velocidad, timestamp, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, NOW(), NOW()
+      )
+      ON CONFLICT (equipo_id) 
+      DO UPDATE SET 
+        latitud = $2,
+        longitud = $3,
+        velocidad = $4,
+        timestamp = NOW(),
+        updated_at = NOW()
+    `;
+    
+    await this.db.execute(upsertQuery, [
+      equipo.id,
+      coordenadas.latitud,
+      coordenadas.longitud,
+      40 // Velocidad simulada en km/h
+    ]);
   }
 } 

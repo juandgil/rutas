@@ -9,6 +9,7 @@ import { IEquipoRepository } from '../../domain/repositories/equipo.repository';
 import { Gps } from '../../domain/entities/gps.entity';
 import { v4 as uuidv4 } from 'uuid';
 import { IPubSubService } from '../../application/interfaces/pubsub-service.interface';
+import { IDatabase } from '../../infrastructure/database/database';
 
 /**
  * @swagger
@@ -21,334 +22,238 @@ export class GpsController {
   constructor(
     @inject(TYPES.IGpsRepository) private gpsRepository: IGpsRepository,
     @inject(TYPES.IEquipoRepository) private equipoRepository: IEquipoRepository,
-    @inject(TYPES.IPubSubService) private pubSubService: IPubSubService
+    @inject(TYPES.IPubSubService) private pubSubService: IPubSubService,
+    @inject(TYPES.IDatabase) private db: IDatabase
   ) {}
 
   /**
    * @swagger
-   * /gps/ubicacion/{equipoId}:
-   *   get:
-   *     summary: Obtiene la ubicación actual de un equipo
+   * /gps/sincronizar_ubicacion:
+   *   post:
+   *     summary: Sincroniza las ubicaciones actuales de todos los equipos desde los registros GPS
+   *     description: Este endpoint debe ser llamado cada 5 minutos por Cloud Scheduler para mantener actualizada la tabla equipos_ubicacion_actual
    *     tags: [GPS]
-   *     parameters:
-   *       - in: path
-   *         name: equipoId
-   *         required: true
-   *         schema:
-   *           type: string
-   *         description: ID del equipo
    *     responses:
    *       200:
-   *         description: Ubicación GPS actual o mensaje informativo
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 success:
-   *                   type: boolean
-   *                 message:
-   *                   type: string
-   *                 data:
-   *                   type: object
-   *                   nullable: true
+   *         description: Ubicaciones sincronizadas exitosamente
    *       500:
    *         description: Error del servidor
    */
-  @httpGet('/ubicacion/:equipoId')
-  async getUbicacion(@request() req: Request, @response() res: Response): Promise<Response> {
+  @httpPost('/sincronizar_ubicacion')
+  async sincronizarUbicacion(@request() req: Request, @response() res: Response): Promise<Response> {
     try {
-      const equipoId = req.params.equipoId;
+      console.log('[GpsController] Iniciando sincronización de ubicaciones GPS');
       
-      // Verificar que el equipo existe
-      const equipo = await this.equipoRepository.findById(equipoId);
-      if (!equipo) {
+      // 1. Obtener todos los equipos activos
+      const equipos = await this.equipoRepository.findAll();
+      const equiposActivos = equipos.filter(e => e.disponible);
+      
+      if (equiposActivos.length === 0) {
         return res.status(200).json(
-          new ApiResponse(false, 'Equipo no encontrado', null)
+          new ApiResponse(true, 'No hay equipos activos para sincronizar', { equiposSincronizados: 0 })
         );
       }
       
-      // Obtener la última ubicación GPS registrada
-      const ultimaUbicacion = await this.gpsRepository.findUltimaUbicacion(equipoId);
+      console.log(`[GpsController] Sincronizando ubicaciones para ${equiposActivos.length} equipos activos`);
       
-      if (!ultimaUbicacion) {
-        // Si no hay registros, crear una ubicación inicial genérica
-        const ubicacionPredeterminada = await this.crearUbicacionPredeterminada(equipoId);
-        
-        const ubicacion: GpsUbicacion = {
-          equipoId,
-          latitud: ubicacionPredeterminada.latitud,
-          longitud: ubicacionPredeterminada.longitud,
-          velocidad: ubicacionPredeterminada.velocidad,
-          timestamp: ubicacionPredeterminada.timestamp
-        };
-        
-        return res.status(200).json(
-          new ApiResponse(true, 'Ubicación GPS inicial (creada automáticamente)', ubicacion)
-        );
+      // 2. Para cada equipo, obtener una ubicación aleatoria de gps_registros
+      const equiposSincronizados = [];
+      
+      for (const equipo of equiposActivos) {
+        try {
+          // Obtener ubicación aleatoria de la tabla gps_registros (que es de simulación)
+          const queryGpsRegistros = `
+            SELECT id, equipo_id, latitud, longitud, velocidad, timestamp
+            FROM gps_registros 
+            WHERE equipo_id = $1
+            ORDER BY RANDOM()
+            LIMIT 1
+          `;
+          
+          const registrosGps = await this.db.query<Gps>(queryGpsRegistros, [equipo.id]);
+          
+          if (registrosGps.length === 0) {
+            console.log(`[GpsController] No hay registros GPS para el equipo ${equipo.id}`);
+            continue;
+          }
+          
+          const ubicacionAleatoria = registrosGps[0];
+          
+          // 3. Actualizar o insertar en la tabla equipos_ubicacion_actual
+          const upsertQuery = `
+            INSERT INTO equipos_ubicacion_actual (
+              equipo_id, latitud, longitud, velocidad, timestamp, updated_at
+            ) VALUES (
+              $1, $2, $3, $4, $5, NOW()
+            )
+            ON CONFLICT (equipo_id) 
+            DO UPDATE SET 
+              latitud = $2,
+              longitud = $3,
+              velocidad = $4,
+              timestamp = $5,
+              updated_at = NOW()
+          `;
+          
+          await this.db.execute(upsertQuery, [
+            equipo.id,
+            ubicacionAleatoria.latitud,
+            ubicacionAleatoria.longitud,
+            ubicacionAleatoria.velocidad,
+            ubicacionAleatoria.timestamp
+          ]);
+          
+          equiposSincronizados.push(equipo.id);
+          console.log(`[GpsController] Ubicación sincronizada para equipo ${equipo.id}`);
+        } catch (equipoError) {
+          console.error(`[GpsController] Error al sincronizar ubicación para equipo ${equipo.id}:`, equipoError);
+          // Continuar con el siguiente equipo
+        }
       }
       
-      // Mapear el registro a la interfaz de GpsUbicacion
-      const ubicacion: GpsUbicacion = {
-        equipoId,
-        latitud: ultimaUbicacion.latitud,
-        longitud: ultimaUbicacion.longitud,
-        velocidad: ultimaUbicacion.velocidad,
-        timestamp: ultimaUbicacion.timestamp
-      };
+      // 4. Publicar evento de sincronización completada
+      await this.pubSubService.publicar('gps-updates', {
+        evento: 'sincronizacion-completada',
+        timestamp: new Date(),
+        equiposSincronizados
+      });
       
       return res.status(200).json(
-        new ApiResponse(true, 'Ubicación GPS actual', ubicacion)
+        new ApiResponse(true, 'Ubicaciones sincronizadas exitosamente', {
+          equiposSincronizados: equiposSincronizados.length,
+          equipos: equiposSincronizados
+        })
       );
     } catch (error) {
-      console.error('Error al obtener ubicación GPS:', error);
+      console.error('[GpsController] Error al sincronizar ubicaciones GPS:', error);
       return res.status(500).json(
-        new ApiResponse(false, 'Error al consultar la ubicación GPS', null)
+        new ApiResponse(false, 'Error al sincronizar ubicaciones GPS', null)
       );
     }
   }
 
   /**
-   * @swagger
-   * /gps/historico/{equipoId}:
-   *   get:
-   *     summary: Obtiene el historial de ubicaciones GPS de un equipo
-   *     tags: [GPS]
-   *     parameters:
-   *       - in: path
-   *         name: equipoId
-   *         required: true
-   *         schema:
-   *           type: string
-   *         description: ID del equipo
-   *       - in: query
-   *         name: desde
-   *         schema:
-   *           type: string
-   *           format: date-time
-   *         description: Fecha y hora de inicio (ISO 8601)
-   *       - in: query
-   *         name: hasta
-   *         schema:
-   *           type: string
-   *           format: date-time
-   *         description: Fecha y hora de fin (ISO 8601)
-   *     responses:
-   *       200:
-   *         description: Historial de ubicaciones GPS
-   *       400:
-   *         description: Parámetros inválidos
-   *       404:
-   *         description: Equipo no encontrado
-   *       500:
-   *         description: Error del servidor
+   * Genera datos de prueba para la tabla gps_registros
+   * NOTA: Solo para entorno de desarrollo
    */
-  @httpGet('/historico/:equipoId')
-  async getHistorico(@request() req: Request, @response() res: Response): Promise<Response> {
+  @httpPost('/generar_datos_prueba')
+  async generarDatosPrueba(@request() req: Request, @response() res: Response): Promise<Response> {
     try {
-      const equipoId = req.params.equipoId;
-      const desdeStr = req.query.desde as string;
-      const hastaStr = req.query.hasta as string;
+      console.log('[GpsController] Iniciando generación de datos de prueba para GPS');
       
-      // Verificar que el equipo existe
-      const equipo = await this.equipoRepository.findById(equipoId);
-      if (!equipo) {
-        return res.status(404).json(
-          new ApiResponse(false, 'Equipo no encontrado', null)
-        );
-      }
+      // Definir equipos para los que se generarán datos
+      const equiposId = ['equipo-001', 'equipo-002'];
       
-      // Validar los parámetros de fecha
-      let desde: Date;
-      let hasta: Date;
-      
-      if (!desdeStr || !hastaStr) {
-        // Si no se especifican fechas, usar las últimas 24 horas
-        hasta = new Date();
-        desde = new Date(hasta.getTime() - 24 * 60 * 60 * 1000);
-      } else {
-        try {
-          desde = new Date(desdeStr);
-          hasta = new Date(hastaStr);
-          
-          // Validar que son fechas válidas
-          if (isNaN(desde.getTime()) || isNaN(hasta.getTime())) {
-            throw new Error('Fechas inválidas');
-          }
-          
-          // Validar que el rango no es muy grande (máximo 7 días)
-          const diffDays = (hasta.getTime() - desde.getTime()) / (1000 * 60 * 60 * 24);
-          if (diffDays > 7) {
-            return res.status(400).json(
-              new ApiResponse(false, 'El rango de fechas no puede ser mayor a 7 días', null)
-            );
-          }
-        } catch (err) {
+      // Verificar que los equipos existen
+      for (const equipoId of equiposId) {
+        const equipo = await this.equipoRepository.findById(equipoId);
+        if (!equipo) {
           return res.status(400).json(
-            new ApiResponse(false, 'Formato de fecha inválido. Use ISO 8601 (YYYY-MM-DDTHH:MM:SSZ)', null)
+            new ApiResponse(false, `Equipo ${equipoId} no encontrado`, null)
           );
         }
       }
       
-      // Obtener registros GPS en el rango de fechas
-      const registros = await this.gpsRepository.findByEquipoYRango(equipoId, desde, hasta);
+      // Eliminar registros existentes (solo para pruebas)
+      await this.db.execute('DELETE FROM gps_registros WHERE equipo_id = ANY($1)', [equiposId]);
       
-      // Mapear los registros a la interfaz de GpsUbicacion
-      const ubicaciones: GpsUbicacion[] = registros.map((reg: Gps) => ({
-        equipoId: reg.equipoId,
-        latitud: reg.latitud,
-        longitud: reg.longitud,
-        velocidad: reg.velocidad,
-        timestamp: reg.timestamp
-      }));
+      // Definir coordenadas base para cada equipo
+      const coordenadasBase: Record<string, { latitud: number; longitud: number }> = {
+        'equipo-001': { latitud: 4.65, longitud: -74.05 },
+        'equipo-002': { latitud: 4.61, longitud: -74.08 }
+      };
+      
+      // Número de registros a generar por equipo
+      const registrosPorEquipo = 100;
+      
+      // Generar datos para cada equipo
+      const registrosInsertados = [];
+      for (const equipoId of equiposId) {
+        const base = coordenadasBase[equipoId];
+        
+        for (let i = 0; i < registrosPorEquipo; i++) {
+          // Generar ubicación ligeramente diferente (simular movimiento)
+          const latitud = base.latitud + (Math.random() - 0.5) * 0.1;
+          const longitud = base.longitud + (Math.random() - 0.5) * 0.1;
+          const velocidad = Math.floor(Math.random() * 60); // Entre 0 y 60 km/h
+          
+          // Generar timestamp aleatorio (últimas 24 horas)
+          const horasAtras = Math.random() * 24;
+          const timestamp = new Date(Date.now() - horasAtras * 60 * 60 * 1000);
+          
+          // Insertar registro
+          const insertQuery = `
+            INSERT INTO gps_registros (
+              id, equipo_id, latitud, longitud, velocidad, timestamp, created_at
+            ) VALUES (
+              $1, $2, $3, $4, $5, $6, NOW()
+            )
+          `;
+          
+          await this.db.execute(insertQuery, [
+            uuidv4(),
+            equipoId,
+            latitud,
+            longitud,
+            velocidad,
+            timestamp
+          ]);
+          
+          registrosInsertados.push({
+            equipoId,
+            latitud,
+            longitud,
+            velocidad,
+            timestamp
+          });
+        }
+      }
+      
+      // Actualizar también equipos_ubicacion_actual con un registro aleatorio
+      for (const equipoId of equiposId) {
+        const registrosEquipo = registrosInsertados.filter(r => r.equipoId === equipoId);
+        if (registrosEquipo.length > 0) {
+          // Tomar un registro aleatorio
+          const registroAleatorio = registrosEquipo[Math.floor(Math.random() * registrosEquipo.length)];
+          
+          // Actualizar equipos_ubicacion_actual
+          const upsertQuery = `
+            INSERT INTO equipos_ubicacion_actual (
+              equipo_id, latitud, longitud, velocidad, timestamp, updated_at
+            ) VALUES (
+              $1, $2, $3, $4, $5, NOW()
+            )
+            ON CONFLICT (equipo_id) 
+            DO UPDATE SET 
+              latitud = $2,
+              longitud = $3,
+              velocidad = $4,
+              timestamp = $5,
+              updated_at = NOW()
+          `;
+          
+          await this.db.execute(upsertQuery, [
+            equipoId,
+            registroAleatorio.latitud,
+            registroAleatorio.longitud,
+            registroAleatorio.velocidad,
+            registroAleatorio.timestamp
+          ]);
+        }
+      }
       
       return res.status(200).json(
-        new ApiResponse(true, `Se encontraron ${ubicaciones.length} registros GPS`, ubicaciones)
+        new ApiResponse(true, 'Datos de prueba generados exitosamente', {
+          equipos: equiposId,
+          registrosPorEquipo,
+          totalRegistros: registrosPorEquipo * equiposId.length
+        })
       );
     } catch (error) {
-      console.error('Error al obtener historial GPS:', error);
+      console.error('[GpsController] Error al generar datos de prueba para GPS:', error);
       return res.status(500).json(
-        new ApiResponse(false, 'Error al consultar el historial GPS', null)
+        new ApiResponse(false, 'Error al generar datos de prueba para GPS', null)
       );
     }
-  }
-
-  /**
-   * @swagger
-   * /gps/ubicacion:
-   *   post:
-   *     summary: Registra una nueva ubicación GPS para un equipo
-   *     tags: [GPS]
-   *     security:
-   *       - bearerAuth: []
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             $ref: '#/components/schemas/GpsUbicacion'
-   *     responses:
-   *       201:
-   *         description: Ubicación registrada exitosamente
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 success:
-   *                   type: boolean
-   *                 message:
-   *                   type: string
-   *                 data:
-   *                   $ref: '#/components/schemas/GpsUbicacion'
-   *       202:
-   *         description: Ubicación en procesamiento (modo asíncrono)
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 success:
-   *                   type: boolean
-   *                 message:
-   *                   type: string
-   *                 data:
-   *                   type: object
-   *                   properties:
-   *                     id:
-   *                       type: string
-   *       400:
-   *         description: Datos inválidos
-   *       404:
-   *         description: Equipo no encontrado
-   *       500:
-   *         description: Error al registrar ubicación
-   */
-  @httpPost('/ubicacion')
-  async registrarUbicacion(@request() req: Request, @response() res: Response): Promise<Response> {
-    try {
-      const { equipoId, latitud, longitud, velocidad, timestamp } = req.body;
-
-      // Verificar datos requeridos
-      if (!equipoId || !latitud || !longitud) {
-        return res.status(400).json({
-          success: false,
-          message: 'Datos incompletos',
-          details: 'Se requiere equipoId, latitud y longitud'
-        });
-      }
-
-      // Crear objeto GPS
-      const ubicacion: Gps = {
-        id: uuidv4(),
-        equipoId,
-        latitud: parseFloat(latitud),
-        longitud: parseFloat(longitud),
-        velocidad: velocidad ? parseFloat(velocidad) : 0,
-        timestamp: timestamp ? new Date(timestamp) : new Date(),
-        createdAt: new Date()
-      };
-
-      // Procesar de forma asíncrona usando PubSub
-      console.log(`Publicando ubicación GPS para equipo ${equipoId} en PubSub`);
-      await this.pubSubService.publicar('gps-updates', ubicacion);
-
-      // Responder inmediatamente
-      return res.status(202).json({
-        success: true,
-        message: 'Ubicación GPS registrada para procesamiento asíncrono',
-        data: {
-          equipoId,
-          latitud: ubicacion.latitud,
-          longitud: ubicacion.longitud,
-          procesadaAsincrona: true
-        }
-      });
-    } catch (error) {
-      console.error('Error al registrar ubicación GPS:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Error al registrar ubicación GPS',
-        error: (error as Error).message
-      });
-    }
-  }
-
-  /**
-   * Crea una ubicación predeterminada para un equipo que no tiene registros previos
-   */
-  private async crearUbicacionPredeterminada(equipoId: string): Promise<Gps> {
-    // Coordenadas predeterminadas para Bogotá
-    const coordenadasPredeterminadas: Record<string, { lat: number; lng: number }> = {
-      'equipo-001': { lat: 4.65, lng: -74.05 },
-      'equipo-002': { lat: 4.61, lng: -74.08 },
-      'equipo-003': { lat: 4.70, lng: -74.04 },
-      'equipo-004': { lat: 4.67, lng: -74.07 },
-      'default': { lat: 4.63, lng: -74.06 } // Coordenadas por defecto
-    };
-    
-    // Obtener coordenadas según el equipo o usar las predeterminadas
-    const coords = equipoId in coordenadasPredeterminadas 
-      ? coordenadasPredeterminadas[equipoId] 
-      : coordenadasPredeterminadas['default'];
-    
-    // Crear un nuevo registro GPS
-    const ubicacion = new Gps({
-      id: uuidv4(),
-      equipoId,
-      latitud: coords.lat,
-      longitud: coords.lng,
-      velocidad: 0, // Detenido
-      timestamp: new Date(),
-      createdAt: new Date()
-    });
-    
-    // Guardar en la base de datos
-    return await this.gpsRepository.create(ubicacion);
-  }
-
-  // Método auxiliar para validar números
-  private esNumero(valor: any): boolean {
-    return typeof valor === 'number' && !isNaN(valor);
   }
 } 

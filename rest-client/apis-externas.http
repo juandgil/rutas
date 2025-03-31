@@ -2,14 +2,9 @@
 
 ### Primero ejecutar auth.http para obtener un token
 ### Luego reemplazar el valor de authToken con el token obtenido
-@authToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+@authToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc0MzM4MTQ2MywiZXhwIjoxNzQzNDY3ODYzfQ.CtyyHWY6QT5ic3wFd32APJ2EkwoOLywVTCDLeELehsU
 
 ### API GPS
-
-### Obtener ubicación GPS de un equipo
-GET {{baseUrl}}/api/gps/ubicacion/equipo-001
-Authorization: Bearer {{authToken}}
-Content-Type: application/json
 
 ### Obtener historial GPS de un equipo
 GET {{baseUrl}}/api/gps/historico/equipo-001?desde=2023-10-24T00:00:00Z&hasta=2023-10-25T00:00:00Z
