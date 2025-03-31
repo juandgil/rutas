@@ -20,13 +20,13 @@
  *             schema:
  *               $ref: '#/components/schemas/Evento'
  *             example:
- *               id: "ev-001"
+ *               id: "c3fee4d5-8664-4c52-8072-3ac815462821"
  *               tipo: "TRAFICO"
  *               descripcion: "Cierre vial por manifestación"
  *               latitud: 4.6782
  *               longitud: -74.0582
  *               ciudadId: "bogota"
- *               equipoId: "eq-001"
+ *               equipoId: "equipo-001"
  *               impacto: "ALTO"
  *               fecha: "2023-11-15T10:30:00Z"
  *               activo: true
@@ -80,13 +80,13 @@
  *               items:
  *                 $ref: '#/components/schemas/Evento'
  *             example:
- *               - id: "ev-001"
+ *               - id: "c3fee4d5-8664-4c52-8072-3ac815462821"
  *                 tipo: "TRAFICO"
  *                 descripcion: "Cierre vial por manifestación"
  *                 latitud: 4.6782
  *                 longitud: -74.0582
  *                 ciudadId: "bogota"
- *                 equipoId: "eq-001"
+ *                 equipoId: "equipo-001"
  *                 impacto: "ALTO"
  *                 fecha: "2023-11-15T10:30:00Z"
  *                 activo: true
@@ -141,13 +141,13 @@
  *               items:
  *                 $ref: '#/components/schemas/Evento'
  *             example:
- *               - id: "ev-001"
+ *               - id: "c3fee4d5-8664-4c52-8072-3ac815462821"
  *                 tipo: "TRAFICO"
  *                 descripcion: "Cierre vial por manifestación"
  *                 latitud: 4.6782
  *                 longitud: -74.0582
  *                 ciudadId: "bogota"
- *                 equipoId: "eq-001"
+ *                 equipoId: "equipo-001"
  *                 impacto: "ALTO"
  *                 fecha: "2023-11-15T10:30:00Z"
  *                 activo: true
@@ -191,7 +191,7 @@
  *         schema:
  *           type: string
  *         description: ID del equipo
- *         example: "eq-001"
+ *         example: "equipo-001"
  *     responses:
  *       200:
  *         description: Lista de eventos del equipo
@@ -202,13 +202,13 @@
  *               items:
  *                 $ref: '#/components/schemas/Evento'
  *             example:
- *               - id: "ev-001"
+ *               - id: "c3fee4d5-8664-4c52-8072-3ac815462821"
  *                 tipo: "TRAFICO"
  *                 descripcion: "Cierre vial por manifestación"
  *                 latitud: 4.6782
  *                 longitud: -74.0582
  *                 ciudadId: "bogota"
- *                 equipoId: "eq-001"
+ *                 equipoId: "equipo-001"
  *                 impacto: "ALTO"
  *                 fecha: "2023-11-15T10:30:00Z"
  *                 activo: true
@@ -218,7 +218,7 @@
  *                 latitud: 4.6523
  *                 longitud: -74.0789
  *                 ciudadId: "bogota"
- *                 equipoId: "eq-001"
+ *                 equipoId: "equipo-001"
  *                 impacto: "ALTO"
  *                 fecha: "2023-11-15T12:30:00Z"
  *                 activo: true
@@ -252,7 +252,7 @@
  *         schema:
  *           type: string
  *         description: ID del evento a inactivar
- *         example: "ev-001"
+ *         example: "c3fee4d5-8664-4c52-8072-3ac815462821"
  *     responses:
  *       200:
  *         description: Evento inactivado exitosamente o mensaje informativo
@@ -271,13 +271,13 @@
  *             examples:
  *               success:
  *                 value:
- *                   id: "ev-001"
+ *                   id: "c3fee4d5-8664-4c52-8072-3ac815462821"
  *                   tipo: "TRAFICO"
  *                   descripcion: "Cierre vial por manifestación"
  *                   latitud: 4.6782
  *                   longitud: -74.0582
  *                   ciudadId: "bogota"
- *                   equipoId: "eq-001"
+ *                   equipoId: "equipo-001"
  *                   impacto: "ALTO"
  *                   fecha: "2023-11-15T10:30:00Z"
  *                   activo: false

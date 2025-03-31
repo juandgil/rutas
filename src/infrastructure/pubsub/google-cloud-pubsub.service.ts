@@ -112,8 +112,8 @@ export class GoogleCloudPubSubService implements IPubSubService {
   ): Promise<string> {
     await this.ensureInitialized();
     
-    // Crear un ID para la suscripción siguiendo el formato solicitado: rutas-events-tipo
-    const subId = subscriptionId || `${this.SUBSCRIPTION_PREFIX}-${tipoMensaje}`;
+    // Crear un ID para la suscripción siguiendo el formato solicitado
+    const subId = subscriptionId || `${this.SUBSCRIPTION_PREFIX}-${tipoMensaje}-${Date.now()}`;
     
     // Verificar si ya existe la suscripción localmente
     const subscriptionInMemory = this.subscriptions.has(subId);
@@ -121,83 +121,92 @@ export class GoogleCloudPubSubService implements IPubSubService {
       console.log(`Reutilizando suscripción existente en memoria: ${subId}`);
       return subId;
     }
-
+    
     try {
-      // Verificar si la suscripción ya existe en Google Cloud primero
-      let subscription: Subscription;
+      // Crear un filtro para recibir solo mensajes del tipo especificado
+      const filter = `attributes.messageType = "${tipoMensaje}"`;
+      console.log(`Creando suscripción ${subId} con filtro: ${filter}`);
       
+      // Verificar si ya existe la suscripción en GCP
+      let subscription: Subscription;
+      const formattedSubscriptionId = `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/subscriptions/${subId}`;
       try {
-        // Intentar obtener la suscripción existente
-        const subscriptionPath = `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/subscriptions/${subId}`;
-        const [exists] = await this.pubSubClient.subscription(subId).exists();
+        const [subscriptions] = await this.pubSubClient.getSubscriptions();
+        const existingSubscription = subscriptions.find(s => s.name === formattedSubscriptionId);
         
-        if (exists) {
+        if (existingSubscription) {
           console.log(`Reutilizando suscripción existente en GCP: ${subId}`);
           subscription = this.pubSubClient.subscription(subId);
-        } else {
-          // Crear la suscripción con filtro por tipo de mensaje
-          const options = {
-            filter: `attributes.messageType = "${tipoMensaje}"`,
-            expirationPolicy: {
-              ttl: {
-                seconds: 24 * 60 * 60 // Expira en 24 horas si no se procesa
-              }
-            }
-          };
           
-          [subscription] = await this.mainTopic.createSubscription(subId, options);
-          console.log(`Creada suscripción para ${tipoMensaje}: ${subId}`);
-        }
-      } catch (error: any) {
-        // Si el error es que ya existe (código 6), utilizamos la existente
-        if (error.code === 6 && error.details?.includes('ALREADY_EXISTS')) {
-          console.log(`Reutilizando suscripción que ya existe en GCP: ${subId}`);
-          subscription = this.pubSubClient.subscription(subId);
+          // Limpiamos los listeners existentes para evitar duplicidad
+          subscription.removeAllListeners();
         } else {
-          // Si es otro tipo de error, lo propagamos
-          throw error;
+          // Crear una nueva suscripción
+          [subscription] = await this.mainTopic.createSubscription(subId, {
+            filter,
+            expirationPolicy: { ttl: { seconds: 3600 } }, // 1 hora de expiración
+            messageRetentionDuration: { seconds: 600 }, // 10 minutos de retención
+            ackDeadlineSeconds: 60 // 1 minuto para procesar
+          });
+          console.log(`Suscripción ${subId} creada exitosamente`);
         }
+      } catch (error) {
+        console.warn(`Error al verificar/crear suscripción ${subId}, intentando crear directamente:`, error);
+        
+        // Intentar crear directamente si falló la verificación
+        [subscription] = await this.mainTopic.createSubscription(subId, {
+          filter,
+          expirationPolicy: { ttl: { seconds: 3600 } }, // 1 hora de expiración
+          messageRetentionDuration: { seconds: 600 }, // 10 minutos de retención
+          ackDeadlineSeconds: 60 // 1 minuto para procesar
+        });
+        console.log(`Suscripción ${subId} creada directamente`);
       }
       
-      // Configurar el procesamiento de mensajes
+      // Configurar el manejo de mensajes
       const messageHandler = async (message: Message) => {
         try {
-          // Asegurarse de que es el tipo correcto
-          if (message.attributes.messageType !== tipoMensaje) {
-            message.ack();
-            return;
-          }
+          console.log(`Recibido mensaje en suscripción ${subId}:`, {
+            id: message.id,
+            attributes: message.attributes,
+            orderingKey: message.orderingKey
+          });
           
-          console.log(`Recibido mensaje, ID: ${message.id}, tipo: ${tipoMensaje}`);
-          
-          // Parsear datos
+          // Deserializar los datos
           const data = JSON.parse(message.data.toString());
           
-          // Ejecutar callback
+          // Ejecutar el callback con los datos
           await callback(data);
           
-          // Confirmar procesamiento
+          // Confirmar procesamiento exitoso
           message.ack();
         } catch (error) {
-          console.error(`Error procesando mensaje de tipo ${tipoMensaje}:`, error);
-          // No confirmar para que se reintente (según política de reintentos)
+          console.error(`Error procesando mensaje en suscripción ${subId}:`, error);
+          // Nack el mensaje para que sea reintentado
           message.nack();
         }
       };
       
-      // Iniciar procesamiento de mensajes
+      // Configurar manejo de errores
+      const errorHandler = (error: Error) => {
+        console.error(`Error en suscripción ${subId}:`, error);
+      };
+      
+      // Registrar handlers
       subscription.on('message', messageHandler);
+      subscription.on('error', errorHandler);
       
-      // Guardar referencia para poder cancelar después
-      this.subscriptions.set(subId, { subscription, callback: messageHandler });
+      // Guardar la suscripción en memoria
+      this.subscriptions.set(subId, {
+        subscription,
+        callback: messageHandler
+      });
       
+      console.log(`Creada suscripción para ${tipoMensaje}: ${subId}`);
       return subId;
     } catch (error) {
-      console.error(`Error al suscribirse al tipo ${tipoMensaje}:`, error);
-      
-      // A pesar del error, devolvemos el ID para que la aplicación pueda continuar
-      // Esto previene que un error en una suscripción rompa toda la aplicación
-      return subId;
+      console.error(`Error al suscribirse a mensajes de tipo ${tipoMensaje}:`, error);
+      throw error;
     }
   }
   

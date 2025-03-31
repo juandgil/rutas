@@ -156,7 +156,7 @@
  *                   distanciaTotal: 38.7
  *                   tiempoEstimado: 135
  *                   replanificada: true
- *                   ultimoEventoId: "ev-001"
+ *                   ultimoEventoId: "c3fee4d5-8664-4c52-8072-3ac815462821"
  *                   envios: [
  *                     {
  *                       id: "env-002",

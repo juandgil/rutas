@@ -71,7 +71,7 @@ export class EventosController {
    *             latitud: 4.6782
    *             longitud: -74.0582
    *             ciudadId: bogota
-   *             equipoId: eq-001
+   *             equipoId: equipo-001
    *             impacto: ALTO
    *     responses:
    *       201:
@@ -135,7 +135,36 @@ export class EventosController {
       return res.status(201).json(response);
     } catch (error: any) {
       console.error('Error al registrar evento:', error);
-      return res.status(500).json({ error: 'Error interno del servidor' });
+      
+      // Manejar errores específicos
+      if (error.message?.includes('No se puede registrar un evento de tráfico cuando las condiciones son normales')) {
+        return res.status(400).json({ 
+          error: 'Validación de evento fallida', 
+          details: 'No se puede registrar un evento de tráfico cuando las condiciones son normales o de nivel medio. Se requiere que el tráfico actual sea de nivel ALTO.' 
+        });
+      }
+      
+      if (error.message?.includes('El tipo de evento es obligatorio') || 
+          error.message?.includes('La descripción del evento es obligatoria') ||
+          error.message?.includes('El ID de la ciudad es obligatorio')) {
+        return res.status(400).json({ 
+          error: 'Datos incompletos', 
+          details: error.message 
+        });
+      }
+      
+      // Si es un error relacionado con servicios externos (API de tráfico/clima)
+      if (error.message?.includes('401') || error.message?.includes('no autorizado') || error.message?.includes('Circuit Breaker')) {
+        return res.status(503).json({ 
+          error: 'Servicio externo no disponible', 
+          details: 'No se pudieron verificar las condiciones de tráfico o clima. Intente más tarde.' 
+        });
+      }
+      
+      return res.status(500).json({ 
+        error: 'Error interno del servidor',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   }
 

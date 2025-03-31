@@ -120,6 +120,10 @@ export class AdminController {
         WHERE ciudad_id = 'ciudad-001'
         ORDER BY id
       `);
+
+      // 7. eliminar todos los eventos
+      await this.db.query(`DELETE FROM eventos`);
+      console.log('Todos los eventos eliminados');
       
       console.log('Estado actual de envíos:', enviosQuery);
 

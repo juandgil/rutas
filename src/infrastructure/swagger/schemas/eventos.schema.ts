@@ -45,13 +45,13 @@
  *           type: boolean
  *           description: Indica si el evento sigue activo
  *       example:
- *         id: "ev-001"
+ *         id: "c3fee4d5-8664-4c52-8072-3ac815462821"
  *         tipo: "TRAFICO"
  *         descripcion: "Cierre vial por manifestación"
  *         latitud: 4.6782
  *         longitud: -74.0582
  *         ciudadId: "bogota"
- *         equipoId: "eq-001"
+ *         equipoId: "equipo-001"
  *         impacto: "ALTO"
  *         fecha: "2023-11-15T10:30:00Z"
  *         activo: true
@@ -94,6 +94,6 @@
  *         latitud: 4.6782
  *         longitud: -74.0582
  *         ciudadId: "bogota"
- *         equipoId: "eq-001"
+ *         equipoId: "equipo-001"
  *         impacto: "ALTO"
  */ 

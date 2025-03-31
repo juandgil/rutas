@@ -118,5 +118,74 @@
  *           type: string
  *           description: ID del evento que causó la replanificación
  *       example:
- *         eventoId: "ev-001"
+ *         eventoId: "c3fee4d5-8664-4c52-8072-3ac815462821"
+ *
+ *     RutaResponseDto:
+ *       type: object
+ *       properties:
+ *         success:
+ *           type: boolean
+ *           description: Indica si la operación fue exitosa
+ *         message:
+ *           type: string
+ *           description: Mensaje descriptivo del resultado
+ *         data:
+ *           type: object
+ *           description: Datos de la ruta optimizada
+ *           properties:
+ *             id:
+ *               type: string
+ *               description: ID único de la ruta
+ *             equipoId:
+ *               type: string
+ *               description: ID del equipo asignado
+ *             fecha:
+ *               type: string
+ *               format: date
+ *               description: Fecha para la que se calculó la ruta
+ *             envios:
+ *               type: array
+ *               items:
+ *                 type: string
+ *               description: Lista de IDs de envíos en la ruta
+ *             estado:
+ *               type: string
+ *               enum: [PLANIFICADA, EN_PROGRESO, COMPLETADA, CANCELADA]
+ *               description: Estado actual de la ruta
+ *             distanciaTotal:
+ *               type: string
+ *               description: Distancia total de la ruta en kilómetros
+ *             tiempoEstimado:
+ *               type: number
+ *               description: Tiempo estimado de la ruta en minutos
+ *             replanificada:
+ *               type: boolean
+ *               description: Indica si la ruta ha sido replanificada
+ *             ultimoEventoId:
+ *               type: string
+ *               nullable: true
+ *               description: ID del último evento que causó una replanificación
+ *             createdAt:
+ *               type: string
+ *               format: date-time
+ *               description: Fecha de creación
+ *             updatedAt:
+ *               type: string
+ *               format: date-time
+ *               description: Fecha de última actualización
+ *       example:
+ *         success: true
+ *         message: "Ruta optimizada correctamente"
+ *         data:
+ *           id: "ff25d4ad-3839-4732-bf4a-1e2fe6a9cfa8"
+ *           equipoId: "equipo-001"
+ *           fecha: "2025-03-29T05:00:00.000Z"
+ *           envios: ["envio-001", "envio-002", "envio-003"]
+ *           estado: "PLANIFICADA"
+ *           distanciaTotal: "15.50"
+ *           tiempoEstimado: 45
+ *           replanificada: false
+ *           ultimoEventoId: null
+ *           createdAt: "2025-03-31T14:45:52.305Z"
+ *           updatedAt: "2025-03-31T14:45:52.305Z"
  */ 

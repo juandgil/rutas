@@ -104,16 +104,29 @@ export abstract class BaseRepository<T, ID> implements IBaseRepository<T, ID> {
       // Convertir nombres de propiedades de camelCase a snake_case
       const snakeCaseEntity = convertToSnakeCase(entity as Record<string, any>);
       
+      // Verificar si ya se incluye updated_at en la entidad
+      const hasUpdatedAt = Object.keys(snakeCaseEntity).includes('updated_at');
+      
       const entries = Object.entries(snakeCaseEntity);
       const columns = entries.map(([key], i) => `${key} = $${i + 1}`).join(', ');
       const values = entries.map(([_, value]) => value);
       
+      // Agregar updated_at solo si no está incluido en la entidad
+      const updateClause = hasUpdatedAt 
+        ? columns 
+        : `${columns}, updated_at = CURRENT_TIMESTAMP`;
+      
+      console.log(`Generando consulta UPDATE para ${this.tableName}, columnas: ${columns}, tiene updated_at: ${hasUpdatedAt}`);
+      
       const query = `
         UPDATE ${this.tableName}
-        SET ${columns}, updated_at = CURRENT_TIMESTAMP
+        SET ${updateClause}
         WHERE ${this.pkColumn} = $${values.length + 1}
         RETURNING *
       `;
+      
+      console.log(`Consulta SQL generada: ${query}`);
+      console.log(`Valores: ${JSON.stringify(values)} y ID: ${String(id)}`);
       
       const result = await this.db.query<T>(query, [...values, id]);
       

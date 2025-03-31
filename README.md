@@ -317,7 +317,7 @@ POST /api/eventos
   "latitud": 4.6782,
   "longitud": -74.0582,
   "ciudadId": "bogota",
-  "equipoId": "eq-001",  // Opcional
+  "equipoId": "equipo-001",  // Opcional
   "impacto": "ALTO",
   "metadatos": { ... }
 }

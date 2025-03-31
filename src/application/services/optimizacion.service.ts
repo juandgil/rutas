@@ -544,45 +544,84 @@ export class OptimizacionService implements IOptimizacionService {
   }
 
   async replanificarRuta(equipoId: string, eventoId: string): Promise<Ruta | null> {
+    console.log(`Iniciando replanificación para equipo ${equipoId} y evento ${eventoId}`);
+    
     // Verificar si el evento existe
     const evento = await this.eventoRepository.findById(eventoId);
     if (!evento) {
+      console.log(`Evento ${eventoId} no encontrado`);
       throw new Error('Evento no encontrado');
     }
 
     // Verificar si el evento está activo
     if (!evento.activo) {
+      console.log(`Evento ${eventoId} no está activo`);
       throw new Error('El evento ya no está activo');
     }
 
-    // Verificar si se puede replanificar (solo una vez por evento)
-    const fecha = new Date();
-    fecha.setHours(0, 0, 0, 0); // Inicio del día actual
+    // Buscar la ruta más reciente para el equipo
+    // En lugar de limitarnos a la fecha actual, buscamos cualquier ruta disponible
+    const fechaActual = new Date();
+    fechaActual.setHours(0, 0, 0, 0); // Inicio del día actual
     
-    const yaReplanificada = await this.rutaRepository.existeReplanificacionPrevia(equipoId, eventoId, fecha);
-    if (yaReplanificada) {
-      throw new Error('Esta ruta ya fue replanificada por este evento');
-    }
-
-    // Obtener la ruta actual
-    const rutaActual = await this.rutaRepository.findByEquipoYFecha(equipoId, fecha);
+    console.log(`Buscando rutas para el equipo ${equipoId}`);
+    
+    // Primero intentamos buscar una ruta para la fecha actual
+    let rutaActual = await this.rutaRepository.findByEquipoYFecha(equipoId, fechaActual);
+    
+    // Si no hay ruta para la fecha actual, buscamos la ruta más reciente para el equipo
     if (!rutaActual) {
-      throw new Error('No hay una ruta para replanificar');
+      console.log(`No se encontró ruta para la fecha actual (${fechaActual.toISOString()}). Buscando la ruta más reciente.`);
+      
+      try {
+        // Consulta para obtener la ruta más reciente del equipo
+        const query = `
+          SELECT * FROM rutas 
+          WHERE equipo_id = $1 
+          ORDER BY fecha DESC, created_at DESC 
+          LIMIT 1
+        `;
+        
+        const result = await this.db.query<Ruta>(query, [equipoId]);
+        
+        if (result.length > 0) {
+          rutaActual = result[0];
+          console.log(`Se encontró ruta más reciente con ID: ${rutaActual.id}, fecha: ${rutaActual.fecha}`);
+        } else {
+          console.log(`No se encontraron rutas para el equipo ${equipoId}`);
+          throw new Error('No hay una ruta para replanificar');
+        }
+      } catch (error) {
+        console.error(`Error al buscar ruta más reciente: ${error}`);
+        throw new Error('No hay una ruta para replanificar');
+      }
+    } else {
+      console.log(`Se encontró ruta para la fecha actual con ID: ${rutaActual.id}`);
     }
 
-    // Verificar que la ruta esté en progreso
+    // Verificar que la ruta esté en progreso o planificada
     if (rutaActual.estado !== EstadoRuta.EN_PROGRESO && rutaActual.estado !== EstadoRuta.PLANIFICADA) {
+      console.log(`La ruta ${rutaActual.id} no está en progreso ni planificada, estado actual: ${rutaActual.estado}`);
       throw new Error('Solo se pueden replanificar rutas en progreso o planificadas');
+    }
+
+    // Verificar si se puede replanificar (solo una vez por evento)
+    const yaReplanificada = await this.rutaRepository.existeReplanificacionPrevia(equipoId, eventoId, rutaActual.fecha);
+    if (yaReplanificada) {
+      console.log(`La ruta ${rutaActual.id} ya fue replanificada por el evento ${eventoId}`);
+      throw new Error('Esta ruta ya fue replanificada por este evento');
     }
 
     // Obtener el equipo
     const equipo = await this.equipoRepository.findById(equipoId);
     if (!equipo) {
+      console.log(`Equipo ${equipoId} no encontrado`);
       throw new Error('Equipo no encontrado');
     }
 
     // Obtener la ubicación actual del equipo
     const ubicacionEquipo = await this.obtenerUbicacionEquipo(equipoId);
+    console.log(`Ubicación actual del equipo ${equipoId}: lat=${ubicacionEquipo.latitud}, lon=${ubicacionEquipo.longitud}`);
 
     // Obtener los envíos de la ruta
     const envios = await Promise.all(
@@ -594,7 +633,10 @@ export class OptimizacionService implements IOptimizacionService {
       .filter((e): e is Envio => e !== null)
       .filter(e => e.estado !== EstadoEnvio.ENTREGADO && e.estado !== EstadoEnvio.CANCELADO);
 
+    console.log(`Envíos válidos para replanificar: ${enviosValidos.length} de ${rutaActual.envios.length}`);
+    
     if (enviosValidos.length === 0) {
+      console.log(`No hay envíos pendientes para replanificar en la ruta ${rutaActual.id}`);
       throw new Error('No hay envíos pendientes para replanificar');
     }
 
@@ -602,6 +644,8 @@ export class OptimizacionService implements IOptimizacionService {
     const condicionesTrafico = await this.traficoClimaService.obtenerCondicionesTrafico(equipo.ciudadId);
     const condicionesClima = await this.traficoClimaService.obtenerCondicionesClima(equipo.ciudadId);
     const evaluacionCondiciones = await this.traficoClimaService.evaluarCondicionesGenerales(equipo.ciudadId);
+    
+    console.log(`Condiciones actuales - Tráfico: ${condicionesTrafico.nivel}, Clima: ${condicionesClima.estado}`);
 
     // Obtener los SLAs para priorización
     const slas = await this.slaRepository.findAll();
@@ -609,6 +653,7 @@ export class OptimizacionService implements IOptimizacionService {
     slas.forEach(sla => slasMap.set(sla.id, sla));
 
     // Preparar los envíos con su información para replanificar
+    console.log(`Preparando información de envíos para replanificación...`);
     const enviosConInfo: EnvioOptimizacionDto[] = await Promise.all(enviosValidos.map(async envio => {
       // Obtener impacto de la ruta desde la ubicación actual
       const impactoRuta = await this.traficoClimaService.calcularImpactoRuta(
@@ -650,6 +695,8 @@ export class OptimizacionService implements IOptimizacionService {
       // Fórmula para definir prioridad (menor = más prioritario)
       const puntaje = (distancia * factorAjuste) * prioridadSla;
       
+      console.log(`Envío ${envio.id} - Distancia: ${distancia.toFixed(2)}km, Impacto: ${impactoRuta.nivelImpacto}, Puntaje: ${puntaje.toFixed(2)}`);
+      
       return { 
         envio, 
         distancia, 
@@ -659,6 +706,7 @@ export class OptimizacionService implements IOptimizacionService {
     }));
 
     // Aplicar algoritmo de replanificación similar al de optimización inicial
+    console.log(`Optimizando orden de entrega con ${enviosConInfo.length} envíos...`);
     const rutaReplanificada = this.optimizarOrdenEntrega(enviosConInfo, ubicacionEquipo);
     
     // Calcular nueva distancia total y tiempo estimado
@@ -705,58 +753,126 @@ export class OptimizacionService implements IOptimizacionService {
     nuevaDistanciaTotal = Math.round(nuevaDistanciaTotal * 10) / 10; // 1 decimal
     nuevoTiempoEstimado = Math.round(nuevoTiempoEstimado); // minutos enteros
 
+    console.log(`Nueva ruta calculada - Distancia: ${nuevaDistanciaTotal}km, Tiempo estimado: ${nuevoTiempoEstimado} minutos`);
+
     // Extraer solo los envíos ordenados
     const nuevosEnviosOrdenados = rutaReplanificada.map(item => item.envio);
     
     // Actualizar el orden de entrega de los envíos
+    console.log(`Actualizando orden de entrega para ${nuevosEnviosOrdenados.length} envíos...`);
     for (let i = 0; i < nuevosEnviosOrdenados.length; i++) {
       await this.envioRepository.actualizarOrdenEntrega(nuevosEnviosOrdenados[i].id, i + 1);
+      console.log(`Envío ${nuevosEnviosOrdenados[i].id} actualizado con orden ${i + 1}`);
     }
 
     // Actualizar la ruta
-    const rutaActualizada = await this.rutaRepository.update(rutaActual.id, {
+    console.log(`Actualizando ruta ${rutaActual.id} con nueva configuración...`);
+    console.log(`Datos para actualización: ${JSON.stringify({
       envios: nuevosEnviosOrdenados.map(e => e.id),
       distanciaTotal: nuevaDistanciaTotal,
       tiempoEstimado: nuevoTiempoEstimado,
       replanificada: true,
       ultimoEventoId: eventoId,
       updatedAt: new Date()
-    });
-
-    // Registrar la ubicación actual del equipo en la tabla equipos_ubicacion_actual
-    const upsertQuery = `
-      INSERT INTO equipos_ubicacion_actual (
-        equipo_id, latitud, longitud, velocidad, timestamp, updated_at
-      ) VALUES (
-        $1, $2, $3, $4, NOW(), NOW()
-      )
-      ON CONFLICT (equipo_id) 
-      DO UPDATE SET 
-        latitud = $2,
-        longitud = $3,
-        velocidad = $4,
-        timestamp = NOW(),
-        updated_at = NOW()
-    `;
+    })}`);
     
-    await this.db.execute(upsertQuery, [
-      equipoId,
-      ubicacionEquipo.latitud,
-      ubicacionEquipo.longitud,
-      40 // Velocidad simulada en km/h
-    ]);
+    try {
+      const rutaActualizada = await this.rutaRepository.update(rutaActual.id, {
+        envios: nuevosEnviosOrdenados.map(e => e.id),
+        distanciaTotal: nuevaDistanciaTotal,
+        tiempoEstimado: nuevoTiempoEstimado,
+        replanificada: true,
+        ultimoEventoId: eventoId,
+        updatedAt: new Date()
+      });
+      
+      console.log(`Ruta ${rutaActual.id} replanificada exitosamente`);
+      console.log(`Datos actualizados: ${JSON.stringify(rutaActualizada)}`);
 
-    // Notificar a través de PubSub
-    await this.pubSubService.publicar(`${this.TOPIC_RUTAS}:replanificada`, rutaActualizada);
+      // Registrar la ubicación actual del equipo en la tabla equipos_ubicacion_actual
+      console.log(`Registrando ubicación actual del equipo ${equipoId}...`);
+      try {
+        const upsertQuery = `
+          INSERT INTO equipos_ubicacion_actual (
+            equipo_id, latitud, longitud, velocidad, timestamp, updated_at
+          ) VALUES (
+            $1, $2, $3, $4, NOW(), NOW()
+          )
+          ON CONFLICT (equipo_id) 
+          DO UPDATE SET 
+            latitud = $2,
+            longitud = $3,
+            velocidad = $4,
+            timestamp = NOW(),
+            updated_at = NOW()
+        `;
+        
+        await this.db.execute(upsertQuery, [
+          equipoId,
+          ubicacionEquipo.latitud,
+          ubicacionEquipo.longitud,
+          40 // Velocidad simulada en km/h
+        ]);
+        
+        console.log(`Ubicación del equipo ${equipoId} registrada correctamente`);
+      } catch (error) {
+        console.error(`Error al registrar ubicación del equipo: ${error}`);
+        // Continuamos a pesar del error, ya que no es crítico para la replanificación
+      }
 
-    return rutaActualizada;
+      // Notificar a través de PubSub
+      console.log(`Publicando evento de replanificación en PubSub...`);
+      try {
+        await this.pubSubService.publicar(`${this.TOPIC_RUTAS}:replanificada`, rutaActualizada);
+        console.log(`Evento de replanificación publicado correctamente`);
+      } catch (error) {
+        console.error(`Error al publicar evento de replanificación: ${error}`);
+        // Continuamos a pesar del error, ya que no es crítico
+      }
+
+      return rutaActualizada;
+    } catch (error) {
+      console.error(`Error al actualizar la ruta: ${error}`);
+      throw error;
+    }
   }
 
   async validarReplanificacion(equipoId: string, eventoId: string): Promise<boolean> {
-    const fecha = new Date();
-    fecha.setHours(0, 0, 0, 0); // Inicio del día actual
+    console.log(`Validando si es posible replanificar para equipo ${equipoId} y evento ${eventoId}`);
     
-    return !(await this.rutaRepository.existeReplanificacionPrevia(equipoId, eventoId, fecha));
+    try {
+      // Buscar la ruta más reciente para el equipo
+      const query = `
+        SELECT * FROM rutas 
+        WHERE equipo_id = $1 
+        ORDER BY fecha DESC, created_at DESC 
+        LIMIT 1
+      `;
+      
+      const result = await this.db.query<Ruta>(query, [equipoId]);
+      
+      if (result.length === 0) {
+        console.log(`No se encontraron rutas para el equipo ${equipoId}`);
+        return false; // No hay rutas para validar
+      }
+      
+      const rutaActual = result[0];
+      console.log(`Ruta más reciente encontrada: ID=${rutaActual.id}, fecha=${rutaActual.fecha}`);
+      
+      // Verificar si ya existe replanificación previa con este evento
+      const yaReplanificada = await this.rutaRepository.existeReplanificacionPrevia(equipoId, eventoId, rutaActual.fecha);
+      
+      if (yaReplanificada) {
+        console.log(`Ya existe una replanificación previa para esta ruta con el evento ${eventoId}`);
+      } else {
+        console.log(`No existe replanificación previa, es posible replanificar`);
+      }
+      
+      return !yaReplanificada;
+    } catch (error) {
+      console.error(`Error al validar replanificación: ${error}`);
+      return false;
+    }
   }
 
   private calcularImpactoTotal(impactos: ImpactoRuta[]): number {

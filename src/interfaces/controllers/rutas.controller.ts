@@ -18,7 +18,7 @@ import { ApiResponse } from '../dtos/common.dto';
  */
 @controller('/rutas')
 export class RutasController {
-  private readonly REQUEST_TIMEOUT = 120000; // 2 minutos
+  private readonly REQUEST_TIMEOUT = 240000; // 4 minutos (aumentado desde 2 minutos)
 
   constructor(
     @inject(TYPES.IPubSubService) private pubSubService: IPubSubService,
@@ -57,14 +57,7 @@ export class RutasController {
    *         content:
    *           application/json:
    *             schema:
-   *               type: object
-   *               properties:
-   *                 success:
-   *                   type: boolean
-   *                 message:
-   *                   type: string
-   *                 data:
-   *                   $ref: '#/components/schemas/RutaResponseDto'
+   *               $ref: '#/components/schemas/RutaResponseDto'
    *       202:
    *         description: Optimización de ruta en procesamiento (modo asíncrono)
    *         content:
@@ -127,41 +120,61 @@ export class RutasController {
         );
       }
 
-      // Iniciar procesamiento asíncrono
-      console.log(`Iniciando optimización asíncrona para equipo ${equipoId}, requestId: ${requestId}`);
-      
-      // Publicar mensaje para procesar asíncronamente
-      await this.pubSubService.publicar('route-optimizations', {
-        equipoId,
-        fecha: fechaObj.toISOString().split('T')[0],
-        requestId
-      });
-      
-      // Esperar por el resultado o timeout
-      const result = await this.waitForResult(requestId);
-      
-      if (!result) {
-        return res.status(202).json(
-          new ApiResponse(true, 'La optimización de ruta está en proceso. Intente consultar el estado más tarde.', { 
-            requestId, 
-            equipoId 
-          })
+      // Intentar optimizar la ruta directamente (síncrono)
+      try {
+        console.log(`[RutasController] Optimizando ruta directamente para equipo ${equipoId}`);
+        const rutaOptimizada = await this.optimizacionService.optimizarRuta(equipoId, fechaObj);
+        return res.status(200).json(
+          new ApiResponse(true, 'Ruta optimizada correctamente', rutaOptimizada)
+        );
+      } catch (error) {
+        console.log(`[RutasController] Falló la optimización directa: ${(error as Error).message}, intentando procesamiento asíncrono`);
+        
+        // Si falla la optimización directa, intentar procesamiento asíncrono
+        console.log(`Iniciando optimización asíncrona para equipo ${equipoId}, requestId: ${requestId}`);
+        
+        // Publicar mensaje para procesar asíncronamente
+        await this.pubSubService.publicar('route-optimizations', {
+          equipoId,
+          fecha: fechaObj.toISOString().split('T')[0],
+          requestId
+        });
+        
+        // Esperar por el resultado o timeout
+        const result = await this.waitForResult(requestId);
+        
+        if (!result) {
+          // Si estamos en modo asíncrono, verificar si la ruta fue creada mientras esperábamos
+          const rutaCreada = await this.rutaRepository.findByEquipoAndDate(equipoId, fechaObj);
+          if (rutaCreada) {
+            console.log(`[RutasController] Se encontró la ruta optimizada en la BD: ${rutaCreada.id}`);
+            return res.status(200).json(
+              new ApiResponse(true, 'Ruta optimizada correctamente', rutaCreada)
+            );
+          }
+          
+          return res.status(202).json(
+            new ApiResponse(true, 'La optimización de ruta está en proceso. Intente consultar el estado más tarde.', { 
+              requestId, 
+              equipoId 
+            })
+          );
+        }
+        
+        if (!result.success) {
+          return res.status(400).json(
+            new ApiResponse(false, 'Error al optimizar ruta', { 
+              requestId, 
+              equipoId,
+              error: result.error
+            })
+          );
+        }
+        
+        return res.status(200).json(
+          new ApiResponse(true, 'Ruta optimizada correctamente', result.ruta)
         );
       }
-      
-      if (!result.success) {
-        return res.status(400).json(
-          new ApiResponse(false, 'Error al optimizar ruta', { 
-            requestId, 
-            equipoId,
-            error: result.error
-          })
-        );
-      }
-      
-      return res.status(200).json(
-        new ApiResponse(true, 'Ruta optimizada correctamente', result.ruta)
-      );
     } catch (error) {
       console.error(`Error al optimizar ruta: ${(error as Error).message}`);
       return res.status(500).json(
@@ -202,21 +215,14 @@ export class RutasController {
    *                 type: string
    *                 description: ID del evento que provoca la replanificación
    *           example:
-   *             eventoId: "ev-001"
+   *             eventoId: "c3fee4d5-8664-4c52-8072-3ac815462821"
    *     responses:
    *       200:
    *         description: Ruta replanificada exitosamente
    *         content:
    *           application/json:
    *             schema:
-   *               type: object
-   *               properties:
-   *                 success:
-   *                   type: boolean
-   *                 message:
-   *                   type: string
-   *                 data:
-   *                   $ref: '#/components/schemas/RutaResponseDto'
+   *               $ref: '#/components/schemas/RutaResponseDto'
    *       202:
    *         description: Replanificación en procesamiento (modo asíncrono)
    *         content:
@@ -240,9 +246,10 @@ export class RutasController {
    *       500:
    *         description: Error al replanificar ruta
    */
-  @httpPost('/replanificar')
+  @httpPut('/replanificar/:equipoId')
   async replanificarRuta(@request() req: Request, @response() res: Response): Promise<Response> {
-    const { equipoId, eventoId } = req.body;
+    const { equipoId } = req.params;
+    const { eventoId } = req.body;
     const requestId = uuidv4();
     
     try {
@@ -492,13 +499,14 @@ export class RutasController {
     return new Promise((resolve) => {
       let timeoutId: NodeJS.Timeout;
       let resultReceived = false;
+      let subscriptionId = `rutas-events-result-listener-${requestId}`;
       
       // Configurar timeout
       timeoutId = setTimeout(() => {
         if (!resultReceived) {
           console.log(`Timeout para requestId: ${requestId}`);
           try {
-            this.pubSubService.cancelarSuscripcion(`rutas-events-result-listener`)
+            this.pubSubService.cancelarSuscripcion(subscriptionId)
               .catch(err => console.error(`Error al cancelar suscripción: ${err.message}`));
           } catch (error) {
             console.error(`Error al intentar cancelar suscripción: ${error}`);
@@ -515,12 +523,12 @@ export class RutasController {
             try {
               // Solo procesar mensajes para este requestId
               if (mensaje && mensaje.requestId === requestId) {
-                console.log(`Resultado recibido para requestId: ${requestId}`);
+                console.log(`Resultado recibido para requestId: ${requestId}, datos: ${JSON.stringify(mensaje)}`);
                 resultReceived = true;
                 clearTimeout(timeoutId);
                 
                 try {
-                  await this.pubSubService.cancelarSuscripcion(`rutas-events-result-listener`);
+                  await this.pubSubService.cancelarSuscripcion(subscriptionId);
                 } catch (error) {
                   console.error(`Error al cancelar suscripción tras recibir respuesta: ${error}`);
                   // Continuamos a pesar del error
@@ -533,7 +541,7 @@ export class RutasController {
               // No resolvemos aquí para permitir que el timeout maneje el caso
             }
           },
-          `rutas-events-result-listener`
+          subscriptionId
         ).catch(error => {
           console.error(`Error al suscribirse a resultados: ${error}`);
           // En caso de error en la suscripción, esperamos el timeout

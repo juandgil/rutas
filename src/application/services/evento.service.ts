@@ -39,28 +39,62 @@ export class EventoService implements IEventoService {
     
     // Para eventos relacionados con tráfico o clima, validar con la API externa
     if (evento.tipo === 'TRAFICO') {
-      const condicionesTrafico = await this.traficoClimaApi.obtenerCondicionesTrafico(evento.ciudadId);
-      
-      // Solo registrar si el nivel de tráfico es alto (validación)
-      if (condicionesTrafico.nivel !== NivelTrafico.ALTO) {
-        throw new Error('No se puede registrar un evento de tráfico cuando las condiciones son normales o de nivel medio');
+      try {
+        const condicionesTrafico = await this.traficoClimaApi.obtenerCondicionesTrafico(evento.ciudadId);
+        
+        // Solo registrar si el nivel de tráfico es alto (validación)
+        if (condicionesTrafico.nivel !== NivelTrafico.ALTO && 
+            evento.impacto !== 'ALTO' && evento.impacto !== 'CRITICO') {
+          throw new Error('No se puede registrar un evento de tráfico cuando las condiciones son normales o de nivel medio');
+        }
+        
+        // Añadir información adicional al evento
+        evento.metadatos = {
+          ...evento.metadatos,
+          nivelTraficoActual: condicionesTrafico.nivel,
+          reporteTrafico: condicionesTrafico.descripcion
+        };
+      } catch (error: any) {
+        console.warn(`No se pudo verificar las condiciones de tráfico para ${evento.ciudadId}:`, error);
+        // Si el evento es de alto impacto, permitir su creación a pesar del error
+        if (evento.impacto === 'ALTO' || evento.impacto === 'CRITICO') {
+          console.log(`Permitiendo creación de evento de tráfico con impacto ${evento.impacto} a pesar de no poder verificar condiciones`);
+          evento.metadatos = {
+            ...evento.metadatos,
+            verificacionFallida: true,
+            motivoFallo: error.message,
+            mensajeAdicional: "Evento registrado sin verificación de condiciones debido a su alto impacto"
+          };
+        } else {
+          throw new Error(`No se puede verificar las condiciones de tráfico actuales. Se requiere impacto ALTO o CRITICO para crear sin verificación.`);
+        }
       }
-      
-      // Añadir información adicional al evento
-      evento.metadatos = {
-        ...evento.metadatos,
-        nivelTraficoActual: condicionesTrafico.nivel,
-        reporteTrafico: condicionesTrafico.descripcion
-      };
     } else if (evento.tipo === 'CLIMA') {
-      const condicionesClima = await this.traficoClimaApi.obtenerCondicionesClima(evento.ciudadId);
-      
-      // Añadir información adicional al evento
-      evento.metadatos = {
-        ...evento.metadatos,
-        condicionClimaActual: condicionesClima.estado,
-        reporteClima: condicionesClima.descripcion
-      };
+      try {
+        const condicionesClima = await this.traficoClimaApi.obtenerCondicionesClima(evento.ciudadId);
+        
+        // Añadir información adicional al evento
+        evento.metadatos = {
+          ...evento.metadatos,
+          condicionClimaActual: condicionesClima.estado,
+          reporteClima: condicionesClima.descripcion
+        };
+      } catch (error: any) {
+        console.warn(`No se pudo verificar las condiciones climáticas para ${evento.ciudadId}:`, error);
+        
+        // Si el evento es de alto impacto, permitir su creación a pesar del error
+        if (evento.impacto === 'ALTO' || evento.impacto === 'CRITICO') {
+          console.log(`Permitiendo creación de evento climático con impacto ${evento.impacto} a pesar de no poder verificar condiciones`);
+          evento.metadatos = {
+            ...evento.metadatos,
+            verificacionFallida: true,
+            motivoFallo: error.message,
+            mensajeAdicional: "Evento registrado sin verificación de condiciones debido a su alto impacto"
+          };
+        } else {
+          throw new Error(`No se puede verificar las condiciones climáticas actuales. Se requiere impacto ALTO o CRITICO para crear sin verificación.`);
+        }
+      }
     }
     
     // Si el evento está asociado a un equipo, obtener su ubicación actual

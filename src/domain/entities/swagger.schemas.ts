@@ -85,7 +85,7 @@
  *           format: date-time
  *           description: Fecha de última actualización
  *       example:
- *         id: eq-001
+ *         id: equipo-001
  *         nombre: Equipo Alpha
  *         vehiculoId: veh-001
  *         ciudadId: bogota
@@ -265,7 +265,7 @@
  *           description: Fecha de última actualización
  *       example:
  *         id: ruta-001
- *         equipoId: eq-001
+ *         equipoId: equipo-001
  *         fecha: "2023-10-25"
  *         envios: ["env-001", "env-002", "env-003"]
  *         estado: PLANIFICADA
@@ -314,12 +314,12 @@
  *           format: date-time
  *           description: Fecha de última actualización
  *       example:
- *         id: ev-001
+ *         id: c3fee4d5-8664-4c52-8072-3ac815462821
  *         tipo: TRAFICO
  *         descripcion: "Cierre vial por manifestación"
  *         fecha: "2023-10-25T10:30:00Z"
  *         ciudadId: bogota
- *         equipoId: eq-001
+ *         equipoId: equipo-001
  *         metadatos: {
  *           nivelTraficoActual: "ALTO",
  *           reporteTrafico: "Tráfico denso en varias zonas de la ciudad"
