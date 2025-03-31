@@ -230,6 +230,7 @@ La implementación actual utiliza Google Cloud Pub/Sub con los siguientes temas:
 ### Rutas
 - `GET /api/rutas/optimizar/:equipoId`: Calcula la ruta óptima para un equipo
 - `PUT /api/rutas/replanificar/:equipoId`: Replanifica la ruta para un equipo
+- `POST /api/rutas/optimizar-masivo/:ciudadId`: Optimiza rutas para todos los equipos disponibles en una ciudad
 
 ### Eventos
 - `POST /api/eventos`: Registra un nuevo evento inesperado
@@ -244,6 +245,7 @@ La implementación actual utiliza Google Cloud Pub/Sub con los siguientes temas:
 ### Tráfico y Clima
 - `GET /api/trafico-clima/trafico/:ciudadId`: Obtiene condiciones de tráfico para una ciudad
 - `GET /api/trafico-clima/clima/:ciudadId`: Obtiene condiciones climáticas para una ciudad
+- `GET /api/trafico-clima/evaluacion/:ciudadId`: Obtiene una evaluación general de las condiciones en una ciudad
 - `POST /api/trafico-clima/impacto`: Calcula el impacto de las condiciones en una ruta
 
 ### Vehículos
@@ -360,3 +362,456 @@ Para ejecutar las pruebas en modo observador (se vuelven a ejecutar cuando cambi
 ```bash
 npm run test:watch
 ```
+
+## Algoritmos de Optimización de Rutas
+
+El sistema implementa algoritmos avanzados para la planificación y optimización de rutas de entrega, utilizando técnicas adaptadas para resolver problemas complejos de logística y transporte en tiempo real.
+
+### Algoritmo del Vecino Más Cercano
+
+Este algoritmo se utiliza para determinar el orden óptimo de entrega una vez que se han seleccionado los envíos para un vehículo:
+
+1. **Funcionamiento básico**: 
+   - Comienza en la ubicación actual del vehículo
+   - Selecciona el destino más cercano no visitado
+   - Se mueve a ese destino y lo marca como visitado
+   - Repite hasta que todos los destinos hayan sido visitados
+
+2. **Ventajas**:
+   - Implementación sencilla y eficiente
+   - Rendimiento computacional rápido para decisiones en tiempo real
+   - Resultados razonablemente buenos para la mayoría de escenarios urbanos
+
+3. **Optimizaciones adicionales**:
+   - Consideración de factores de tráfico en tiempo real
+   - Ajustes por condiciones climáticas
+   - Priorización según SLAs de clientes
+
+### Algoritmo de Asignación de Envíos a Vehículos
+
+Para determinar qué envíos asignar a cada vehículo, el sistema utiliza un algoritmo de optimización de carga:
+
+1. **Factores considerados**:
+   - Capacidad del vehículo (peso y volumen máximos)
+   - Prioridad de los envíos según SLA
+   - Distancia y tiempo estimado de entrega
+   - Condiciones de tráfico y clima
+
+2. **Proceso de selección**:
+   - Calcula un puntaje para cada envío basado en:
+     - Prioridad del SLA (menor número = mayor prioridad)
+     - Distancia hasta el destino
+     - Impacto de las condiciones actuales de tráfico y clima
+   - Ordena los envíos por puntaje (menor es mejor - más prioritario)
+   - Selecciona envíos hasta completar la capacidad del vehículo
+
+3. **Consideraciones de eficiencia**:
+   - Maximiza el uso de la capacidad del vehículo
+   - Optimiza distancia y tiempo de la ruta completa
+   - Balance entre priorización de SLAs y eficiencia de ruta
+
+## Arquitectura de Planificación y Replanificación
+
+### Proceso de Planificación de Rutas
+
+El endpoint `GET /api/rutas/optimizar/:equipoId` implementa un proceso completo de planificación que:
+
+1. **Recopila información relevante**:
+   - Obtiene datos del equipo y vehículo
+   - Verifica disponibilidad del vehículo
+   - Consulta ubicación actual del equipo
+   - Obtiene envíos pendientes en la ciudad
+
+2. **Implementa lógica de negocio**:
+   - Filtra envíos compatibles con capacidad del vehículo
+   - Aplica algoritmo de selección de envíos
+   - Optimiza orden de entrega
+   - Calcula distancia total y tiempo estimado
+
+3. **Notifica asíncronamente**:
+   - Publica el resultado en un tema de Pub/Sub
+   - Permite que sistemas interesados sean notificados
+
+### Procesamiento Asíncrono con PubSub
+
+El sistema utiliza Google Cloud Pub/Sub por varias razones clave:
+
+1. **Desacoplamiento de componentes**:
+   - El servicio de optimización publica los resultados
+   - Otros componentes se suscriben independientemente
+   - Reduce interdependencias directas entre servicios
+
+2. **Resiliencia mejorada**:
+   - La comunicación asíncrona permite reintento de operaciones
+   - El sistema continúa funcionando incluso si algunos componentes fallan
+   - Los mensajes se persisten hasta que sean procesados correctamente
+
+3. **Escalabilidad horizontal**:
+   - Permite escalar componentes independientemente
+   - Soporta picos de carga distribuyendo el procesamiento
+   - Múltiples instancias pueden procesar mensajes en paralelo
+
+### Replanificación Dinámica
+
+El endpoint `PUT /api/rutas/replanificar/:equipoId` proporciona capacidades de replanificación en tiempo real:
+
+1. **Respuesta a eventos inesperados**:
+   - Recibe el ID del evento que causa la replanificación
+   - Verifica que el evento esté activo y afecte la ruta
+   - Asegura que no se replanifique múltiples veces por el mismo evento
+
+2. **Recálculo inteligente**:
+   - Comienza desde la ubicación actual del equipo
+   - Considera solo envíos no entregados
+   - Incorpora condiciones actualizadas de tráfico y clima
+   - Ajusta prioridades según el tipo de evento
+
+3. **Optimización de costos operativos**:
+   - Minimiza las desviaciones innecesarias
+   - Prioriza SLAs en riesgo
+   - Equilibra eficiencia con servicio al cliente
+
+### Optimización Masiva
+
+El endpoint `POST /api/rutas/optimizar-masivo/:ciudadId` permite planificar rutas para todos los equipos disponibles en una ciudad:
+
+1. **Procesamiento por lotes**:
+   - Identifica todos los equipos disponibles en la ciudad
+   - Obtiene todos los envíos pendientes sin asignar
+   - Procesa cada equipo secuencialmente
+
+2. **Distribución eficiente**:
+   - Asigna envíos considerando la capacidad de cada vehículo
+   - Optimiza globalmente para minimizar distancia total
+   - Prioriza envíos según SLAs
+
+3. **Tolerancia a fallos**:
+   - Maneja errores individuales sin interrumpir el proceso completo
+   - Continúa con el siguiente equipo si ocurre un error
+   - Reporta resultados parciales si no todos los equipos pueden ser optimizados
+
+### Integración con APIs Externas
+
+El sistema utiliza APIs externas para mejorar la calidad de las decisiones:
+
+1. **API de Tráfico y Clima**:
+   - Proporciona datos en tiempo real sobre condiciones de tráfico
+   - Informa sobre condiciones climáticas que pueden afectar las entregas
+   - Calcula factores de ajuste para tiempos estimados
+
+2. **API de GPS**:
+   - Obtiene ubicaciones actualizadas de equipos
+   - Rastrea progreso de las entregas
+   - Permite replanificación desde ubicación real
+
+3. **API de Vehículos**:
+   - Verifica disponibilidad de vehículos
+   - Obtiene capacidades actualizadas
+   - Monitorea estado de mantenimiento
+
+Estos servicios externos están integrados con patrones de resiliencia (Circuit Breaker) y estrategias de fallback para garantizar el funcionamiento incluso cuando los servicios externos presentan problemas.
+
+## Diagramas de Secuencia de Endpoints Principales
+
+A continuación se describen los flujos de ejecución de los endpoints principales del sistema, detallando las entradas, procesamiento interno, servicios utilizados, tablas de base de datos y salidas.
+
+### Autenticación: POST /api/auth/login
+
+**Flujo de Secuencia:**
+```
+Cliente → AuthController.login() → AuthService.login() → [Validación de credenciales] → AuthService.generateToken() → Cliente
+```
+
+**Detalles:**
+1. **Entrada:** `{ username: string, password: string }`
+2. **Procesamiento:**
+   - Valida formato con `LoginRequestDto.validationSchema`
+   - Autentica contra usuarios (en producción: tabla `usuarios`)
+3. **Servicios:** `AuthService`
+4. **Salida:** `{ token: string, expiresIn: number }`
+
+### Planificación de Rutas: GET /api/rutas/optimizar/:equipoId
+
+**Flujo de Secuencia:**
+```
+Cliente → RutasController.optimizarRuta() → EquipoRepository.findById() → 
+PubSubService.publicar('route-optimizations') → [Espera async] → 
+MessageHandlers.handleRouteOptimization() → OptimizacionService.optimizarRuta() → 
+[Múltiples repositorios y APIs] → PubSubService.publicar('route-optimizations-results') → 
+[Controller recibe resultado] → Cliente
+```
+
+**Detalles:**
+1. **Entrada:** 
+   - `equipoId` (parámetro de ruta)
+   - `fecha` (opcional, query parameter)
+2. **Procesamiento:**
+   - Verifica existencia del equipo
+   - Verifica formato de fecha
+   - Comprueba si ya existe una ruta para esa fecha
+   - Publica mensaje para procesamiento asíncrono
+   - Espera resultado con timeout (120 segundos)
+3. **Servicios:**
+   - `OptimizacionService`
+   - `PubSubService`
+   - `TraficoClimaService`
+4. **Repositorios/Tablas:**
+   - `EquipoRepository` (tabla `equipos`)
+   - `RutaRepository` (tabla `rutas`)
+   - `EnvioRepository` (tabla `envios`)
+   - `VehiculoRepository` (tabla `vehiculos`)
+   - `SlaRepository` (tabla `slas`)
+5. **APIs Externas:**
+   - `TraficoClimaApi` (condiciones de tráfico y clima)
+   - `GpsApi` (ubicaciones actuales)
+   - `VehiculoApi` (capacidades de vehículos)
+6. **Algoritmos:**
+   - Selección de envíos por capacidad de vehículo
+   - Vecino más cercano para orden de entrega
+   - Cálculo de tiempos con condiciones actuales
+7. **Salida:**
+   - Éxito: `{ success: true, message: string, data: Ruta }`
+   - Procesando: `{ success: true, message: string, data: { requestId, equipoId } }`
+   - Error: `{ success: false, message: string, data: { error } }`
+
+### Replanificación de Rutas: POST /api/rutas/replanificar
+
+**Flujo de Secuencia:**
+```
+Cliente → RutasController.replanificarRuta() → EquipoRepository.findById() → 
+EventoService.obtenerEvento() → PubSubService.publicar('route-replanifications') → 
+[Espera async] → MessageHandlers.handleRouteReplanification() → 
+OptimizacionService.validarReplanificacion() → OptimizacionService.replanificarRuta() → 
+[Recálculo de ruta] → PubSubService.publicar('route-optimizations-results') → 
+[Controller recibe resultado] → Cliente
+```
+
+**Detalles:**
+1. **Entrada:** 
+   - Body: `{ equipoId: string, eventoId: string }`
+2. **Procesamiento:**
+   - Valida existencia del equipo y evento
+   - Publica mensaje para procesamiento asíncrono
+   - Verifica que no se haya replanificado por el mismo evento
+   - Recalcula ruta desde ubicación actual considerando condiciones
+3. **Servicios:**
+   - `OptimizacionService`
+   - `EventoService`
+   - `PubSubService`
+   - `TraficoClimaService`
+4. **Repositorios/Tablas:**
+   - `EquipoRepository` (tabla `equipos`)
+   - `EventoRepository` (tabla `eventos`)
+   - `RutaRepository` (tabla `rutas`)
+   - `EnvioRepository` (tabla `envios`)
+   - `GpsRepository` (tabla `gps_registros`)
+5. **Salida:**
+   - Éxito: `{ success: true, message: string, data: Ruta }`
+   - Procesando: `{ success: true, message: string, data: { requestId, equipoId, eventoId } }`
+   - Error: `{ success: false, message: string, data: { error } }`
+
+### Optimización Masiva: POST /api/rutas/optimizar-ciudad/:ciudadId
+
+**Flujo de Secuencia:**
+```
+Cliente → RutasController.optimizarRutasCiudad() → OptimizacionService.optimizarRutasMasivas() →
+[Obtener equipos de ciudad] → EquipoRepository.findByCiudad() → 
+[Para cada equipo] → OptimizacionService.optimizarRuta() → 
+[Proceso de optimización] → Cliente
+```
+
+**Detalles:**
+1. **Entrada:**
+   - `ciudadId` (parámetro de ruta)
+   - Body: `{ fecha: string }` (opcional)
+2. **Procesamiento:**
+   - Valida formato de fecha
+   - Obtiene todos los equipos disponibles en la ciudad
+   - Obtiene todos los envíos pendientes en la ciudad
+   - Distribuye envíos entre equipos según capacidad
+   - Optimiza ruta para cada equipo
+3. **Servicios:**
+   - `OptimizacionService`
+   - `TraficoClimaService`
+4. **Repositorios/Tablas:**
+   - `EquipoRepository` (tabla `equipos`)
+   - `VehiculoRepository` (tabla `vehiculos`)
+   - `EnvioRepository` (tabla `envios`)
+   - `RutaRepository` (tabla `rutas`)
+   - `SlaRepository` (tabla `slas`)
+5. **Salida:**
+   - Éxito: `{ success: true, message: string, data: { rutasCreadas, enviosAsignados, equiposOptimizados } }`
+   - Error: `{ success: false, message: string, data: { error } }`
+
+### Registrar Evento: POST /api/eventos
+
+**Flujo de Secuencia:**
+```
+Cliente → EventosController.registrarEvento() → EventoService.registrarEvento() →
+EventoRepository.create() → PubSubService.publicar('delivery-events') → Cliente
+```
+
+**Detalles:**
+1. **Entrada:** 
+   - Body: `{ equipoId, tipo, descripcion, latitud, longitud, ciudadId, impacto }`
+2. **Procesamiento:**
+   - Valida datos con `CrearEventoDto.validationSchema`
+   - Genera ID único para el evento
+   - Almacena evento en base de datos
+   - Notifica a sistemas interesados mediante PubSub
+3. **Servicios:**
+   - `EventoService`
+   - `PubSubService`
+4. **Repositorios/Tablas:**
+   - `EventoRepository` (tabla `eventos`)
+5. **Salida:**
+   - Éxito: `{ success: true, message: string, data: Evento }`
+   - Error: `{ success: false, message: string, data: { error } }`
+
+### Obtener Ubicación GPS: GET /api/gps/ubicacion/:equipoId
+
+**Flujo de Secuencia:**
+```
+Cliente → GpsController.getUbicacion() → GpsRepository.findUltimaUbicacion() →
+[Si no existe] → EquipoRepository.findById() → [Crear ubicación predeterminada] → Cliente
+```
+
+**Detalles:**
+1. **Entrada:**
+   - `equipoId` (parámetro de ruta)
+2. **Procesamiento:**
+   - Busca la última ubicación GPS registrada
+   - Si no existe, verifica que el equipo exista
+   - Genera una ubicación predeterminada en caso necesario
+3. **Repositorios/Tablas:**
+   - `GpsRepository` (tabla `gps_registros`)
+   - `EquipoRepository` (tabla `equipos`)
+4. **Salida:**
+   - Éxito: `{ success: true, message: string, data: { equipoId, latitud, longitud, velocidad, timestamp } }`
+   - Error: `{ success: false, message: string, data: { error } }`
+
+### Condiciones de Tráfico: GET /api/trafico-clima/trafico/:ciudadId
+
+**Flujo de Secuencia:**
+```
+Cliente → TraficoClimaController.obtenerCondicionesTrafico() →
+TraficoClimaService.obtenerCondicionesTrafico() →
+TraficoClimaApi.obtenerCondicionesTrafico() → [Circuit Breaker] → Cliente
+```
+
+**Detalles:**
+1. **Entrada:**
+   - `ciudadId` (parámetro de ruta)
+2. **Procesamiento:**
+   - Obtiene condiciones de tráfico desde el servicio
+   - Utiliza Circuit Breaker para manejar fallos de API externa
+   - Retorna datos desde caché si la API externa falla
+3. **Servicios:**
+   - `TraficoClimaService`
+4. **APIs Externas:**
+   - `TraficoClimaApi`
+5. **Patrones Resilientes:**
+   - Circuit Breaker para protección de fallas
+   - Caché con Redis para respuesta rápida
+6. **Salida:**
+   - Éxito: `{ success: true, message: string, data: { ciudadId, nivel, descripcion, timestamp } }`
+   - Error: `{ success: false, message: string, data: { error } }`
+
+### Evaluación de Condiciones: GET /api/trafico-clima/evaluacion/:ciudadId
+
+**Flujo de Secuencia:**
+```
+Cliente → TraficoClimaController.obtenerEvaluacionCondiciones() →
+TraficoClimaService.evaluarCondicionesGenerales() →
+[Obtener tráfico y clima] → [Calcular riesgo y factor] → Cliente
+```
+
+**Detalles:**
+1. **Entrada:**
+   - `ciudadId` (parámetro de ruta)
+2. **Procesamiento:**
+   - Obtiene condiciones de tráfico y clima
+   - Calcula nivel de riesgo general
+   - Determina factor de ajuste para tiempos
+   - Genera recomendaciones operativas
+3. **Servicios:**
+   - `TraficoClimaService`
+4. **Salida:**
+   - Éxito: `{ success: true, message: string, data: { nivelRiesgo, factorDelay, recomendaciones } }`
+   - Error: `{ success: false, message: string, data: { error } }`
+
+## Implementación de Algoritmos de Optimización
+
+### Algoritmo de Asignación de Envíos (OptimizacionService.optimizarCargaYRuta)
+
+**Flujo del Algoritmo:**
+```
+[Entrada] → [Obtener SLAs] → [Obtener condiciones] → [Evaluar condiciones] →
+[Para cada envío] → [Calcular impacto de ruta] → [Calcular puntaje] →
+[Ordenar por puntaje] → [Seleccionar hasta capacidad] →
+[Optimizar orden con Vecino más Cercano] → [Calcular distancia total] →
+[Calcular tiempo ajustado] → [Salida]
+```
+
+**Detalles:**
+1. **Entrada:** Envíos disponibles, ubicación inicial, capacidad vehículo, equipo
+2. **Factores para puntaje:**
+   - Prioridad SLA (menor = más prioritario)
+   - Distancia desde ubicación actual
+   - Factor de ajuste por condiciones climáticas y tráfico
+3. **Ordenamiento:** Por puntaje (menor = mejor)
+4. **Selección:** Hasta llenar capacidad (peso y volumen)
+5. **Vecino más Cercano:**
+   - Inicia en ubicación actual
+   - Selecciona envío más cercano
+   - Actualiza ubicación actual
+   - Repite hasta asignar todos los envíos
+6. **Ajuste de Tiempo:**
+   - Considera impacto de condiciones en cada tramo
+   - Aplica factores de ajuste según nivel de impacto
+7. **Salida:** Lista ordenada de envíos, distancia total, tiempo estimado
+
+### Algoritmo de Replanificación (OptimizacionService.replanificarRuta)
+
+**Flujo del Algoritmo:**
+```
+[Entrada] → [Verificar replanificación previa] → [Obtener ruta actual] →
+[Obtener ubicación actual] → [Obtener envíos no entregados] →
+[Actualizar condiciones] → [Recalcular optimización] →
+[Actualizar ruta en BD] → [Salida]
+```
+
+**Detalles:**
+1. **Entrada:** ID de equipo, ID de evento
+2. **Procesamiento:**
+   - Verifica que no se haya replanificado por el mismo evento
+   - Obtiene la ruta actual del equipo
+   - Determina ubicación actual mediante GPS
+   - Filtra envíos que aún no han sido entregados
+   - Obtiene condiciones actualizadas de tráfico y clima
+   - Aplica algoritmo de optimización desde la ubicación actual
+   - Actualiza la ruta en base de datos (envíos, distancia, tiempo)
+3. **Salida:** Ruta actualizada o null si no se puede replanificar
+
+### Algoritmo de Optimización Masiva (OptimizacionService.optimizarRutasMasivas)
+
+**Flujo del Algoritmo:**
+```
+[Entrada] → [Obtener equipos disponibles] → [Obtener envíos pendientes] →
+[Para cada equipo] → [Asignar envíos óptimos] → [Optimizar ruta] →
+[Actualizar estados] → [Calcular métricas globales] → [Salida]
+```
+
+**Detalles:**
+1. **Entrada:** ID de ciudad, fecha
+2. **Procesamiento:**
+   - Obtiene equipos disponibles en la ciudad
+   - Obtiene todos los envíos pendientes
+   - Ordena envíos por prioridad SLA
+   - Para cada equipo:
+     * Verifica capacidad del vehículo
+     * Selecciona envíos más prioritarios que quedan en capacidad
+     * Optimiza la ruta según algoritmo del vecino más cercano
+     * Actualiza estado de envíos y rutas en BD
+   - Maneja errores para continuar con otros equipos si alguno falla
+3. **Salida:** Resumen con rutas creadas, envíos asignados y equipos optimizados

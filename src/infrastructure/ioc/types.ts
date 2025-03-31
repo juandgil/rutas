@@ -37,7 +37,11 @@ const TYPES = {
   EventosController: Symbol.for('EventosController'),
   AuthController: Symbol.for('AuthController'),
   TraficoClimaController: Symbol.for('TraficoClimaController'),
-  AdminController: Symbol.for('AdminController')
+  AdminController: Symbol.for('AdminController'),
+
+  // New services
+  ITraficoClimaService: Symbol.for('ITraficoClimaService'),
+  JwtService: Symbol.for('JwtService')
 };
 
 export { TYPES }; 

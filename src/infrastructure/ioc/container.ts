@@ -67,6 +67,10 @@ import { GpsApiMock } from '../external-apis/gps-api.mock';
 import { IVehiculoApi } from '../../domain/interfaces/external-apis.interface';
 import { VehiculoApiMock } from '../external-apis/vehiculo-api.mock';
 
+// Agregar la siguiente línea en las importaciones
+import { ITraficoClimaService } from '../../application/interfaces/trafico-clima-service.interface';
+import { TraficoClimaService } from '../../application/services/trafico-clima.service';
+
 // Crear el contenedor IoC
 const container = new Container();
 
@@ -114,5 +118,8 @@ if (process.env.NODE_ENV === 'development') {
 } else {
   container.bind<IPubSubService>(TYPES.IPubSubService).to(GoogleCloudPubSubService).inSingletonScope();
 }
+
+// Y luego agregar este binding en la función de configuración del contenedor
+container.bind<ITraficoClimaService>(TYPES.ITraficoClimaService).to(TraficoClimaService).inSingletonScope();
 
 export { container }; 

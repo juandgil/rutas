@@ -372,6 +372,110 @@ export class RutasController {
   }
 
   /**
+   * @swagger
+   * /rutas/optimizar-ciudad/{ciudadId}:
+   *   post:
+   *     summary: Optimiza las rutas de todos los equipos disponibles en una ciudad
+   *     tags: [Rutas]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: ciudadId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: ID de la ciudad para la que se optimizarán las rutas
+   *         example: "ciudad-001"
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               fecha:
+   *                 type: string
+   *                 format: date
+   *                 description: Fecha para la que se optimizarán las rutas (formato YYYY-MM-DD)
+   *           example:
+   *             fecha: "2023-11-15"
+   *     responses:
+   *       200:
+   *         description: Rutas optimizadas exitosamente
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 message:
+   *                   type: string
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     rutasCreadas:
+   *                       type: array
+   *                       items:
+   *                         $ref: '#/components/schemas/Ruta'
+   *                     enviosAsignados:
+   *                       type: integer
+   *                     equiposOptimizados:
+   *                       type: integer
+   *       400:
+   *         description: Datos inválidos o incompletos
+   *       404:
+   *         description: Ciudad no encontrada o sin equipos disponibles
+   *       500:
+   *         description: Error al optimizar rutas
+   */
+  @httpPost('/optimizar-ciudad/:ciudadId')
+  async optimizarRutasCiudad(@request() req: Request, @response() res: Response): Promise<Response> {
+    const { ciudadId } = req.params;
+    const { fecha } = req.body;
+    
+    try {
+      // Validar formato de fecha
+      let fechaObj: Date;
+      if (fecha) {
+        fechaObj = new Date(fecha);
+        if (isNaN(fechaObj.getTime())) {
+          return res.status(400).json(
+            new ApiResponse(false, 'Formato de fecha inválido. Use YYYY-MM-DD', null)
+          );
+        }
+      } else {
+        fechaObj = new Date();
+      }
+      
+      // Ejecutar optimización masiva
+      console.log(`Iniciando optimización masiva para ciudad ${ciudadId}, fecha: ${fechaObj.toISOString().split('T')[0]}`);
+      
+      const resultado = await this.optimizacionService.optimizarRutasMasivas(ciudadId, fechaObj);
+      
+      if (resultado.rutasCreadas.length === 0) {
+        return res.status(200).json(
+          new ApiResponse(true, 'No se pudieron crear rutas. Posibles causas: no hay equipos disponibles, no hay envíos pendientes, o todas las rutas ya están planificadas.', {
+            rutasCreadas: [],
+            enviosAsignados: 0,
+            equiposOptimizados: 0
+          })
+        );
+      }
+      
+      return res.status(200).json(
+        new ApiResponse(true, `Optimización masiva completada. Se crearon ${resultado.rutasCreadas.length} rutas con ${resultado.enviosAsignados} envíos asignados.`, resultado)
+      );
+    } catch (error) {
+      console.error(`Error al optimizar rutas por ciudad: ${(error as Error).message}`);
+      return res.status(500).json(
+        new ApiResponse(false, 'Error al optimizar rutas por ciudad', { error: (error as Error).message })
+      );
+    }
+  }
+
+  /**
    * Espera el resultado de una operación asíncrona o retorna null en caso de timeout
    */
   private async waitForResult(requestId: string): Promise<any> {
