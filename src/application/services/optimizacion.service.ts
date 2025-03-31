@@ -129,6 +129,12 @@ export class OptimizacionService implements IOptimizacionService {
     // Obtener el vehículo asociado al equipo
     const vehiculo = await this.vehiculoRepository.findById(equipo.vehiculoId);
     console.log('Vehículo encontrado:', vehiculo);
+    console.log('Vehículo capacidad - datos crudos:', {
+      id: vehiculo?.id,
+      capacidadPeso: vehiculo?.capacidadPeso,
+      tipo: vehiculo?.capacidadPeso.constructor.name,
+      capacidadVolumen: vehiculo?.capacidadVolumen
+    });
     
     if (!vehiculo) {
       throw new Error('Vehículo no encontrado');
@@ -140,9 +146,26 @@ export class OptimizacionService implements IOptimizacionService {
       throw new Error(`El vehículo no está disponible: ${disponibilidadVehiculo.razon}`);
     }
 
-    // Obtener capacidad actualizada del vehículo desde la API externa
-    const capacidadVehiculo = await this.vehiculoApi.obtenerCapacidad(vehiculo.id);
-    console.log(`Capacidad del vehículo ${vehiculo.id}:`, capacidadVehiculo);
+    // CAMBIO: Usar una consulta SQL directa para obtener la capacidad del vehículo
+    // Esto evita problemas de serialización/deserialización
+    const capacidadQuery = `
+      SELECT capacidad_peso, capacidad_volumen 
+      FROM vehiculos 
+      WHERE id = $1
+    `;
+    const capacidadResult = await this.db.query<{capacidadPeso: number, capacidadVolumen: number}>(capacidadQuery, [vehiculo.id]);
+    
+    if (capacidadResult.length === 0) {
+      throw new Error(`No se pudo obtener la capacidad del vehículo ${vehiculo.id}`);
+    }
+    
+    const capacidadVehiculo = {
+      pesoMaximo: Number(capacidadResult[0].capacidadPeso),
+      volumenMaximo: Number(capacidadResult[0].capacidadVolumen)
+    };
+    
+    console.log(`Capacidad del vehículo ${vehiculo.id} obtenida directamente de BD:`, capacidadVehiculo);
+    console.log('Datos crudos de capacidad:', capacidadResult[0]);
     
     // Obtener los envíos pendientes para la ciudad del equipo
     const enviosPendientes = await this.envioRepository.findByCiudad(equipo.ciudadId);
@@ -152,18 +175,36 @@ export class OptimizacionService implements IOptimizacionService {
     // 1. Estén pendientes (no asignados a otro equipo)
     // 2. No tengan asignación previa
     // 3. Sean compatibles con la capacidad del vehículo (peso y volumen)
-    const enviosFiltrados = enviosPendientes.filter(e => 
-      e.estado === EstadoEnvio.PENDIENTE && 
-      !e.equipoId && 
-      e.peso <= capacidadVehiculo.pesoMaximo && 
-      e.volumen <= capacidadVehiculo.volumenMaximo
-    );
+    const enviosFiltrados = enviosPendientes.filter(e => {
+      // Convertir a número para asegurarnos que la comparación sea correcta
+      const pesoParsed = Number(e.peso);
+      const volumenParsed = Number(e.volumen);
+      
+      console.log(`Evaluando envío ${e.id}: Peso=${pesoParsed}/${capacidadVehiculo.pesoMaximo}, Volumen=${volumenParsed}/${capacidadVehiculo.volumenMaximo}`);
+      console.log(`¿Cumple requisitos? ${
+        e.estado === EstadoEnvio.PENDIENTE && 
+        !e.equipoId && 
+        pesoParsed <= capacidadVehiculo.pesoMaximo && 
+        volumenParsed <= capacidadVehiculo.volumenMaximo ? 'Sí' : 'No'
+      }`);
+      
+      return e.estado === EstadoEnvio.PENDIENTE && 
+            !e.equipoId && 
+            pesoParsed <= capacidadVehiculo.pesoMaximo && 
+            volumenParsed <= capacidadVehiculo.volumenMaximo;
+    });
     
     console.log(`Después de filtrar, quedan ${enviosFiltrados.length} envíos disponibles para optimizar`);
 
     if (enviosFiltrados.length === 0) {
       throw new Error('No hay envíos pendientes que cumplan los requisitos para optimizar');
     }
+
+    // Mostrar detalles de los envíos pendientes para depuración
+    console.log(`Detalles de envíos pendientes:`);
+    enviosFiltrados.forEach(e => {
+      console.log(`Envío ${e.id}: estado=${e.estado}, peso=${e.peso}, volumen=${e.volumen}, equipoId=${e.equipoId || 'no asignado'}`);
+    });
 
     // Ejecutar algoritmo de optimización
     const resultado = await this.optimizarCargaYRuta(
@@ -229,6 +270,14 @@ export class OptimizacionService implements IOptimizacionService {
     capacidadVehiculo: { pesoMaximo: number; volumenMaximo: number },
     equipo: Equipo
   ): Promise<ResultadoOptimizacion> {
+    console.log(`Función optimizarCargaYRuta iniciada con ${enviosDisponibles.length} envíos disponibles`);
+    console.log(`Capacidad del vehículo: Peso máximo = ${capacidadVehiculo.pesoMaximo}kg, Volumen máximo = ${capacidadVehiculo.volumenMaximo}m³`);
+    
+    // Detalle de los envíos disponibles
+    enviosDisponibles.forEach(e => {
+      console.log(`Envío disponible: ${e.id}, Peso: ${e.peso}kg, Volumen: ${e.volumen}m³`);
+    });
+    
     // Obtener los SLAs para priorizar los envíos
     const slas = await this.slaRepository.findAll();
     const slasMap = new Map<string, Sla>();
@@ -290,15 +339,24 @@ export class OptimizacionService implements IOptimizacionService {
     
     // Intentar incluir todos los envíos posibles sin exceder la capacidad
     for (const item of enviosConPuntaje) {
-      // Verificar si añadir este envío sobrepasaría los límites de capacidad
-      if (pesoActual + item.envio.peso <= capacidadVehiculo.pesoMaximo && 
-          volumenActual + item.envio.volumen <= capacidadVehiculo.volumenMaximo) {
+      // Convertir explícitamente a número
+      const envPeso = Number(item.envio.peso);
+      const envVolumen = Number(item.envio.volumen);
+      
+      // En optimizarCargaYRuta - añadir verificación en la selección de envíos
+      // Después de intentar incluir un envío
+      console.log(`Intento incluir envío ${item.envio.id}: Peso actual ${pesoActual}/${capacidadVehiculo.pesoMaximo}, Volumen actual ${volumenActual}/${capacidadVehiculo.volumenMaximo}`);
+      console.log(`¿Se puede incluir? ${pesoActual + envPeso <= capacidadVehiculo.pesoMaximo && volumenActual + envVolumen <= capacidadVehiculo.volumenMaximo ? 'Sí' : 'No - excede capacidad'}`);
+      
+      // Verificar que podemos incluir este envío
+      if (pesoActual + envPeso <= capacidadVehiculo.pesoMaximo && 
+          volumenActual + envVolumen <= capacidadVehiculo.volumenMaximo) {
         enviosSeleccionados.push(item);
-        pesoActual += item.envio.peso;
-        volumenActual += item.envio.volumen;
+        pesoActual += envPeso;
+        volumenActual += envVolumen;
         console.log(`Añadido envío ${item.envio.id} a la ruta. Peso acumulado: ${pesoActual}/${capacidadVehiculo.pesoMaximo}, Volumen: ${volumenActual}/${capacidadVehiculo.volumenMaximo}`);
       } else {
-        console.log(`Envío ${item.envio.id} excede capacidad disponible. No incluido. (Peso: ${item.envio.peso}, Volumen: ${item.envio.volumen})`);
+        console.log(`Envío ${item.envio.id} excede capacidad disponible. No incluido. (Peso: ${envPeso}, Volumen: ${envVolumen})`);
       }
     }
     

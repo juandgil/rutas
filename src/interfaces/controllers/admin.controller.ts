@@ -14,7 +14,7 @@ import { ApiResponse } from '../dtos/common.dto';
 @controller('/admin')
 export class AdminController {
   constructor(
-    @inject(TYPES.IDatabase) private db: IDatabase
+    @inject(TYPES.IDatabase) private readonly db: IDatabase
   ) {}
 
   /**
@@ -44,28 +44,30 @@ export class AdminController {
         });
       }
 
-      // 1. Reiniciar estado de los envíos
+      // 1. Reiniciar completamente todos los envíos a estado PENDIENTE
       await this.db.query(`
         UPDATE envios 
         SET estado = 'PENDIENTE', 
             equipo_id = NULL, 
             orden_entrega = NULL, 
             fecha_entrega_estimada = NULL
-        WHERE ciudad_id = 'ciudad-001'
+        WHERE id LIKE 'envio-%'
       `);
-      console.log('Envíos reiniciados');
+      console.log('Envíos reiniciados a estado PENDIENTE');
 
-      // 2. Eliminar rutas existentes
-      await this.db.query(`
-        DELETE FROM rutas 
-        WHERE equipo_id IN (
-          SELECT id FROM equipos WHERE ciudad_id = 'ciudad-001'
-        )
-      `);
-      console.log('Rutas eliminadas');
+      // 2. Eliminar todas las rutas existentes
+      await this.db.query(`DELETE FROM rutas`);
+      console.log('Todas las rutas eliminadas');
 
-      // 3. Actualizar ubicaciones de equipos o asegurarse de que existan
-      // Primero verificamos si la tabla existe
+      // 3. Actualizar disponibilidad de vehículos
+      await this.db.query(`UPDATE vehiculos SET disponible = true`);
+      console.log('Disponibilidad de vehículos actualizada');
+
+      // 4. Actualizar disponibilidad de equipos
+      await this.db.query(`UPDATE equipos SET disponible = true`);
+      console.log('Disponibilidad de equipos actualizada');
+
+      // 5. Actualizar ubicaciones de equipos
       const tablaExiste = await this.verificarTablaExiste('equipos_ubicacion_actual');
 
       if (tablaExiste) {
@@ -107,27 +109,34 @@ export class AdminController {
             ('equipo-002', 4.61, -74.08, 0, NOW()),
             ('equipo-003', 4.70, -74.04, 0, NOW()),
             ('equipo-004', 4.67, -74.07, 0, NOW())
-          ON CONFLICT (equipo_id) 
-          DO UPDATE SET 
-            latitud = EXCLUDED.latitud, 
-            longitud = EXCLUDED.longitud, 
-            velocidad = EXCLUDED.velocidad, 
-            timestamp = NOW()
         `);
         console.log('Tabla equipos_ubicacion_actual creada y poblada');
       }
+
+      // 6. Mostrar el estado actual de los envíos (para verificación)
+      const enviosQuery = await this.db.query(`
+        SELECT id, estado, peso, volumen, equipo_id, ciudad_id 
+        FROM envios 
+        WHERE ciudad_id = 'ciudad-001'
+        ORDER BY id
+      `);
+      
+      console.log('Estado actual de envíos:', enviosQuery);
 
       return res.status(200).json(
         new ApiResponse(true, 'Datos de prueba reiniciados exitosamente', {
           enviosReiniciados: true,
           rutasEliminadas: true,
-          ubicacionesActualizadas: true
+          vehiculosDisponibles: true,
+          equiposDisponibles: true,
+          ubicacionesActualizadas: true,
+          enviosActuales: enviosQuery
         })
       );
     } catch (error) {
       console.error('Error al reiniciar datos de prueba:', error);
       return res.status(500).json(
-        new ApiResponse(false, 'Error al reiniciar datos de prueba', null)
+        new ApiResponse(false, 'Error al reiniciar datos de prueba', { error: (error as Error).message })
       );
     }
   }
